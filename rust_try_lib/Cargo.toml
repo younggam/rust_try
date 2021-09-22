@@ -1,0 +1,11 @@
+[package]
+name = "rust_try_lib"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ash = "0.33.3+1.2.191"
+ash-window = "0.7.0"
+winit = "0.25.0"
