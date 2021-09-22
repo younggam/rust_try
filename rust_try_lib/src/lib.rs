@@ -4,6 +4,9 @@ use ash_window;
 use std::ffi::CString;
 pub use winit;
 
+const IMAGE_AVAILABLE_INDEX: usize = 0;
+const RENDERING_DONE_INDEX: usize = 1;
+
 pub struct RustTry {
     entry: ash::Entry,
     window: winit::window::Window,
@@ -14,6 +17,7 @@ pub struct RustTry {
     queue: vk::Queue,
     command_pool: vk::CommandPool,
     command_buffer: Vec<vk::CommandBuffer>,
+    fences: [vk::Fence; 2],
     surface_loader: ash::extensions::khr::Surface,
     surface: vk::SurfaceKHR,
     swapchain_loader: ash::extensions::khr::Swapchain,
@@ -31,6 +35,7 @@ impl RustTry {
         let queue = unsafe { device.get_device_queue(queue_family_index, 0) };
         let command_pool = Self::create_command_pool(&device, &queue_family_index);
         let command_buffer = Self::allocate_command_buffer(&device, &command_pool);
+        let fences = Self::create_fences(&device);
         let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
         let swapchain_loader = ash::extensions::khr::Swapchain::new(&instance, &device);
 
@@ -44,6 +49,7 @@ impl RustTry {
             queue,
             command_pool,
             command_buffer,
+            fences,
             surface_loader,
             surface: vk::SurfaceKHR::null(),
             swapchain_loader,
@@ -183,6 +189,36 @@ impl RustTry {
                 .allocate_command_buffers(&command_buffer_allocate_info)
                 .expect("Command buffer allocation error")
         }
+    }
+
+    fn create_fences(device: &ash::Device) -> [vk::Fence; 2] {
+        let mut fences = [vk::Fence::null(); 2];
+        let mut fence_info = vk::FenceCreateInfo::builder().build();
+
+        for i in 0..2 {
+            fence_info.flags = if i == RENDERING_DONE_INDEX {
+                vk::FenceCreateFlags::SIGNALED
+            } else {
+                vk::FenceCreateFlags::empty()
+            };
+
+            match unsafe { device.create_fence(&fence_info, None) } {
+                Err(e) if e == vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
+                    println!("VK_ERROR_OUR_OF_HOST_MEMORY");
+                    break;
+                }
+                //
+                Err(e) if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => {
+                    println!("VK_ERROR_OUR_OF_DEVICE_MEMORY");
+                    break;
+                }
+                //
+                Ok(fence) => fences[i as usize] = fence,
+                //
+                _ => break,
+            };
+        }
+        return fences;
     }
 
     fn create_surface(&mut self) {
@@ -333,11 +369,50 @@ impl RustTry {
 
         let (swapchain_image_index, is_suboptimal) = unsafe {
             self.swapchain_loader
-                .acquire_next_image(self.swapchain, 0, vk::Semaphore::null(), vk::Fence::null())
+                .acquire_next_image(
+                    self.swapchain,
+                    0,
+                    vk::Semaphore::null(),
+                    self.fences[IMAGE_AVAILABLE_INDEX],
+                )
                 .expect("Next image acquiring error")
         };
 
+        unsafe {
+            self.device
+                .wait_for_fences(
+                    &self.fences[IMAGE_AVAILABLE_INDEX..RENDERING_DONE_INDEX],
+                    true,
+                    u64::MAX,
+                )
+                .expect("Fences waiting error");
+            self.device
+                .reset_fences(&self.fences[IMAGE_AVAILABLE_INDEX..RENDERING_DONE_INDEX])
+                .expect("Fences reseting error");
+            if !self
+                .device
+                .get_fence_status(self.fences[RENDERING_DONE_INDEX])
+                .expect("Fence status getting error")
+            {
+                self.device
+                    .wait_for_fences(&self.fences[RENDERING_DONE_INDEX..], true, u64::MAX);
+            }
+            self.device
+                .reset_fences(&self.fences[RENDERING_DONE_INDEX..])
+                .expect("Fences reseting error");
+        }
+
         let swapchain_image = &self.swapchain_images[swapchain_image_index as usize];
+
+        let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+            .build();
+
+        unsafe {
+            self.device
+                .begin_command_buffer(self.command_buffer[0], &command_buffer_begin_info)
+                .expect("Command buffer begining error");
+        }
 
         let image_memory_barrier = vk::ImageMemoryBarrier::builder()
             .old_layout(vk::ImageLayout::PRESENT_SRC_KHR)
@@ -423,7 +498,11 @@ impl RustTry {
 
         unsafe {
             self.device
-                .queue_submit(self.queue, &[submit_info], vk::Fence::null())
+                .queue_submit(
+                    self.queue,
+                    &[submit_info],
+                    self.fences[RENDERING_DONE_INDEX],
+                )
                 .expect("Queue submitting error");
             self.device
                 .device_wait_idle()
@@ -501,6 +580,9 @@ impl RustTry {
 impl Drop for RustTry {
     fn drop(&mut self) {
         unsafe {
+            for fence in self.fences {
+                self.device.destroy_fence(fence, None);
+            }
             self.device.destroy_command_pool(self.command_pool, None);
             self.device.destroy_device(None);
             self.instance.destroy_instance(None);
