@@ -20,14 +20,6 @@ fn main() {
         },
         //
         winit::event::Event::WindowEvent { event, .. } => match event {
-            winit::event::WindowEvent::CloseRequested => {
-                *control_flow = winit::event_loop::ControlFlow::Exit;
-            }
-            //
-            winit::event::WindowEvent::Destroyed => {
-                rust_try.on_shutdown();
-            }
-            //
             winit::event::WindowEvent::KeyboardInput { input, .. } => match input {
                 winit::event::KeyboardInput {
                     virtual_keycode,
@@ -46,8 +38,20 @@ fn main() {
                 },
             },
             //
+            winit::event::WindowEvent::CloseRequested => {
+                *control_flow = winit::event_loop::ControlFlow::Exit;
+            }
+            //
+            winit::event::WindowEvent::Destroyed => {
+                rust_try.on_shutdown();
+            }
+            //
             _ => {}
         },
+        //
+        winit::event::Event::MainEventsCleared => {
+            rust_try.on_render();
+        }
         //
         winit::event::Event::LoopDestroyed => {
             rust_try.on_shutdown();

@@ -12,6 +12,8 @@ pub struct RustTry {
     queue_family_index: u32,
     device: ash::Device,
     queue: vk::Queue,
+    command_pool: vk::CommandPool,
+    command_buffer: Vec<vk::CommandBuffer>,
     surface_loader: ash::extensions::khr::Surface,
     surface: vk::SurfaceKHR,
     swapchain_loader: ash::extensions::khr::Swapchain,
@@ -25,8 +27,10 @@ impl RustTry {
         let instance = Self::create_instance(&entry);
         let physical_device = Self::create_physical_device(&instance);
         let queue_family_index = Self::find_queue_family_index(&instance, &physical_device);
-        let device = Self::create_device(&instance, &physical_device, &queue_family_index);
+        let device = Self::create_device(&instance, &queue_family_index, &physical_device);
         let queue = unsafe { device.get_device_queue(queue_family_index, 0) };
+        let command_pool = Self::create_command_pool(&device, &queue_family_index);
+        let command_buffer = Self::allocate_command_buffer(&device, &command_pool);
         let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
         let swapchain_loader = ash::extensions::khr::Swapchain::new(&instance, &device);
 
@@ -38,20 +42,14 @@ impl RustTry {
             queue_family_index,
             device,
             queue,
+            command_pool,
+            command_buffer,
             surface_loader,
             surface: vk::SurfaceKHR::null(),
             swapchain_loader,
             swapchain: vk::SwapchainKHR::null(),
             swapchain_images: Vec::<vk::Image>::new(),
         }
-    }
-
-    fn print_instance_layer_properties(entry: &ash::Entry) {
-        let layer_properties = entry
-            .enumerate_instance_layer_properties()
-            .expect("There is no available layer");
-        layer_properties.iter().for_each(|x| println!("{:#?}", x));
-        println!("\n");
     }
 
     fn create_instance(entry: &ash::Entry) -> ash::Instance {
@@ -74,7 +72,7 @@ impl RustTry {
         //
 
         //
-        let create_info = vk::InstanceCreateInfo::builder()
+        let instance_create_info = vk::InstanceCreateInfo::builder()
             .enabled_layer_names(&layer_names_raw)
             .enabled_extension_names(&instance_extension_names_raw)
             .build();
@@ -82,7 +80,7 @@ impl RustTry {
 
         unsafe {
             entry
-                .create_instance(&create_info, None)
+                .create_instance(&instance_create_info, None)
                 .expect("Instance creation error")
         }
     }
@@ -126,8 +124,8 @@ impl RustTry {
 
     fn create_device(
         instance: &ash::Instance,
-        physical_device: &vk::PhysicalDevice,
         queue_family_index: &u32,
+        physical_device: &vk::PhysicalDevice,
     ) -> ash::Device {
         let priority: f32 = 1.0;
 
@@ -157,46 +155,55 @@ impl RustTry {
         }
     }
 
-    fn print_instance_extensions_properties(entry: &ash::Entry) {
-        let instance_extension_properties = entry
-            .enumerate_instance_extension_properties()
-            .expect("There is no available extension");
-        instance_extension_properties
-            .iter()
-            .for_each(|x| println!("{:#?}", x));
-        println!("\n");
+    fn create_command_pool(device: &ash::Device, queue_family_index: &u32) -> vk::CommandPool {
+        let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
+            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+            .queue_family_index(*queue_family_index)
+            .build();
+
+        unsafe {
+            device
+                .create_command_pool(&command_pool_create_info, None)
+                .expect("Command poll creation error")
+        }
     }
 
-    fn print_device_extensions_properties(
-        instance: &ash::Instance,
-        physical_device: &vk::PhysicalDevice,
-    ) {
-        let device_extension_properties = unsafe {
-            instance
-                .enumerate_device_extension_properties(*physical_device)
-                .expect("There is no available extension")
-        };
-        device_extension_properties
-            .iter()
-            .for_each(|x| println!("{:#?}", x));
+    fn allocate_command_buffer(
+        device: &ash::Device,
+        command_pool: &vk::CommandPool,
+    ) -> Vec<vk::CommandBuffer> {
+        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+            .command_pool(*command_pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1)
+            .build();
+
+        unsafe {
+            device
+                .allocate_command_buffers(&command_buffer_allocate_info)
+                .expect("Command buffer allocation error")
+        }
     }
 
-    fn print_present_modes(
-        surface_loader: &ash::extensions::khr::Surface,
-        surface: &vk::SurfaceKHR,
-        physical_device: &vk::PhysicalDevice,
-    ) {
-        let present_modes = unsafe {
-            surface_loader
-                .get_physical_device_surface_present_modes(*physical_device, *surface)
-                .expect("There is no available present modes")
-        };
-        present_modes
-            .iter()
-            .for_each(|mode| println!("{:#?}", mode));
+    fn create_surface(&mut self) {
+        unsafe {
+            self.surface =
+                ash_window::create_surface(&self.entry, &self.instance, &self.window, None)
+                    .expect("Surface creation error");
+
+            let supported = self
+                .surface_loader
+                .get_physical_device_surface_support(
+                    self.physical_device,
+                    self.queue_family_index,
+                    self.surface,
+                )
+                .expect("Surface support is invalid");
+            assert!(supported, "Suface is not supported");
+        }
     }
 
-    fn create_swapchain(&self) -> vk::SwapchainKHR {
+    fn create_swapchain(&mut self) {
         let surface_formats = unsafe {
             self.surface_loader
                 .get_physical_device_surface_formats(self.physical_device, self.surface)
@@ -231,41 +238,207 @@ impl RustTry {
             .image_color_space(surface_format.color_space)
             .image_extent(surface_capabilities.current_extent)
             .image_array_layers(1)
-            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+            .image_usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::COLOR_ATTACHMENT)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(surface_capabilities.current_transform)
             .composite_alpha(composite_alpha)
             .present_mode(vk::PresentModeKHR::FIFO)
             .build();
 
-        unsafe {
+        self.swapchain = unsafe {
             self.swapchain_loader
                 .create_swapchain(&swapchain_create_info, None)
                 .expect("Swapchain creation error")
+        };
+    }
+
+    pub fn init_swapchain_images(&mut self) {
+        self.swapchain_images = unsafe {
+            self.swapchain_loader
+                .get_swapchain_images(self.swapchain)
+                .expect("Getting swapchain images error")
+        };
+
+        let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+            .build();
+
+        unsafe {
+            self.device
+                .begin_command_buffer(self.command_buffer[0], &command_buffer_begin_info)
+                .expect("Command buffer begining error");
+        }
+
+        let mut image_memory_barriers = Vec::<vk::ImageMemoryBarrier>::new();
+        self.swapchain_images.iter().for_each(|image| {
+            let image_memory_barrier = vk::ImageMemoryBarrier::builder()
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                .src_queue_family_index(self.queue_family_index)
+                .dst_queue_family_index(self.queue_family_index)
+                .image(*image)
+                .subresource_range(
+                    vk::ImageSubresourceRange::builder()
+                        .aspect_mask(vk::ImageAspectFlags::COLOR)
+                        .level_count(1)
+                        .layer_count(1)
+                        .build(),
+                )
+                .build();
+
+            image_memory_barriers.push(image_memory_barrier);
+        });
+
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                self.command_buffer[0],
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &image_memory_barriers,
+            );
+            self.device
+                .end_command_buffer(self.command_buffer[0])
+                .expect("Command buffer ending error");
+        }
+
+        let submit_info = vk::SubmitInfo::builder()
+            .command_buffers(&self.command_buffer[..1])
+            .build();
+
+        unsafe {
+            self.device
+                .queue_submit(self.queue, &[submit_info], vk::Fence::null())
+                .expect("Queue submitting error");
+            self.device
+                .device_wait_idle()
+                .expect("Device waiting error");
         }
     }
 
     pub fn on_startup(&mut self) {
+        self.create_surface();
+        self.create_swapchain();
+        self.init_swapchain_images();
+    }
+
+    pub fn on_render(&self) {
         unsafe {
-            self.surface =
-                ash_window::create_surface(&self.entry, &self.instance, &self.window, None)
-                    .expect("Surface creation error");
+            self.device
+                .reset_command_buffer(self.command_buffer[0], vk::CommandBufferResetFlags::empty())
+                .expect("Command buffer reseting error");
+        }
 
-            let supported = self
-                .surface_loader
-                .get_physical_device_surface_support(
-                    self.physical_device,
-                    self.queue_family_index,
-                    self.surface,
-                )
-                .expect("Surface support is invalid");
-            assert!(supported, "Suface is not supported");
+        let (swapchain_image_index, is_suboptimal) = unsafe {
+            self.swapchain_loader
+                .acquire_next_image(self.swapchain, 0, vk::Semaphore::null(), vk::Fence::null())
+                .expect("Next image acquiring error")
+        };
 
-            self.swapchain = self.create_swapchain();
-            self.swapchain_images = self
-                .swapchain_loader
-                .get_swapchain_images(self.swapchain)
-                .expect("Getting swapchain images error");
+        let swapchain_image = &self.swapchain_images[swapchain_image_index as usize];
+
+        let image_memory_barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .src_queue_family_index(self.queue_family_index)
+            .dst_queue_family_index(self.queue_family_index)
+            .image(*swapchain_image)
+            .subresource_range(
+                vk::ImageSubresourceRange::builder()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .level_count(1)
+                    .layer_count(1)
+                    .build(),
+            )
+            .build();
+
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                self.command_buffer[0],
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[image_memory_barrier],
+            );
+        }
+
+        let clear_color = vk::ClearColorValue {
+            //        R    G    B    A
+            float32: [1.0, 0.0, 1.0, 1.0],
+        };
+
+        let image_subresource_range = vk::ImageSubresourceRange::builder()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .level_count(1)
+            .layer_count(1)
+            .build();
+
+        unsafe {
+            self.device.cmd_clear_color_image(
+                self.command_buffer[0],
+                *swapchain_image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &clear_color,
+                &[image_subresource_range],
+            );
+        }
+
+        let image_memory_barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+            .src_queue_family_index(self.queue_family_index)
+            .dst_queue_family_index(self.queue_family_index)
+            .image(*swapchain_image)
+            .subresource_range(
+                vk::ImageSubresourceRange::builder()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .level_count(1)
+                    .layer_count(1)
+                    .build(),
+            )
+            .build();
+
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                self.command_buffer[0],
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[image_memory_barrier],
+            );
+            self.device
+                .end_command_buffer(self.command_buffer[0])
+                .expect("Command buffer ending error");
+        }
+
+        let submit_info = vk::SubmitInfo::builder()
+            .command_buffers(&self.command_buffer[..1])
+            .build();
+
+        unsafe {
+            self.device
+                .queue_submit(self.queue, &[submit_info], vk::Fence::null())
+                .expect("Queue submitting error");
+            self.device
+                .device_wait_idle()
+                .expect("Device waiting error");
+        }
+
+        let present_info = vk::PresentInfoKHR::builder()
+            .swapchains(&[self.swapchain])
+            .image_indices(&[swapchain_image_index])
+            .build();
+
+        unsafe {
+            self.swapchain_loader
+                .queue_present(self.queue, &present_info)
+                .expect("Queue presenting error");
         }
     }
 
@@ -276,11 +449,59 @@ impl RustTry {
             self.surface_loader.destroy_surface(self.surface, None);
         }
     }
+
+    fn print_instance_layer_properties(entry: &ash::Entry) {
+        let layer_properties = entry
+            .enumerate_instance_layer_properties()
+            .expect("There is no available layer");
+        layer_properties.iter().for_each(|x| println!("{:#?}", x));
+        println!("\n");
+    }
+
+    fn print_instance_extensions_properties(entry: &ash::Entry) {
+        let instance_extension_properties = entry
+            .enumerate_instance_extension_properties()
+            .expect("There is no available extension");
+        instance_extension_properties
+            .iter()
+            .for_each(|x| println!("{:#?}", x));
+        println!("\n");
+    }
+
+    fn print_device_extensions_properties(
+        instance: &ash::Instance,
+        physical_device: &vk::PhysicalDevice,
+    ) {
+        let device_extension_properties = unsafe {
+            instance
+                .enumerate_device_extension_properties(*physical_device)
+                .expect("There is no available extension")
+        };
+        device_extension_properties
+            .iter()
+            .for_each(|x| println!("{:#?}", x));
+    }
+
+    fn print_present_modes(
+        surface_loader: &ash::extensions::khr::Surface,
+        physical_device: &vk::PhysicalDevice,
+        surface: &vk::SurfaceKHR,
+    ) {
+        let present_modes = unsafe {
+            surface_loader
+                .get_physical_device_surface_present_modes(*physical_device, *surface)
+                .expect("There is no available present modes")
+        };
+        present_modes
+            .iter()
+            .for_each(|mode| println!("{:#?}", mode));
+    }
 }
 
 impl Drop for RustTry {
     fn drop(&mut self) {
         unsafe {
+            self.device.destroy_command_pool(self.command_pool, None);
             self.device.destroy_device(None);
             self.instance.destroy_instance(None);
         }
