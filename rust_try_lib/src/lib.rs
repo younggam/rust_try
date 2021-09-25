@@ -17,6 +17,7 @@ pub struct RustTry {
     queue: vk::Queue,
     command_pool: vk::CommandPool,
     command_buffer: Vec<vk::CommandBuffer>,
+    semaphores: [vk::Semaphore; 2],
     fences: [vk::Fence; 2],
     surface_loader: ash::extensions::khr::Surface,
     surface: vk::SurfaceKHR,
@@ -35,6 +36,7 @@ impl RustTry {
         let queue = unsafe { device.get_device_queue(queue_family_index, 0) };
         let command_pool = Self::create_command_pool(&device, &queue_family_index);
         let command_buffer = Self::allocate_command_buffer(&device, &command_pool);
+        let semaphores = Self::create_semaphores(&device);
         let fences = Self::create_fences(&device);
         let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
         let swapchain_loader = ash::extensions::khr::Swapchain::new(&instance, &device);
@@ -49,6 +51,7 @@ impl RustTry {
             queue,
             command_pool,
             command_buffer,
+            semaphores,
             fences,
             surface_loader,
             surface: vk::SurfaceKHR::null(),
@@ -191,18 +194,40 @@ impl RustTry {
         }
     }
 
-    fn create_fences(device: &ash::Device) -> [vk::Fence; 2] {
-        let mut fences = [vk::Fence::null(); 2];
-        let mut fence_info = vk::FenceCreateInfo::builder().build();
+    fn create_semaphores(device: &ash::Device) -> [vk::Semaphore; 2] {
+        let mut semaphores = [vk::Semaphore::null(); 2];
+        let semaphore_create_info = vk::SemaphoreCreateInfo::builder()
+            .flags(vk::SemaphoreCreateFlags::empty())
+            .build();
 
         for i in 0..2 {
-            fence_info.flags = if i == RENDERING_DONE_INDEX {
-                vk::FenceCreateFlags::SIGNALED
-            } else {
-                vk::FenceCreateFlags::empty()
-            };
+            match unsafe { device.create_semaphore(&semaphore_create_info, None) } {
+                Err(e) if e == vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
+                    println!("VK_ERROR_OUR_OF_HOST_MEMORY");
+                    break;
+                }
+                //
+                Err(e) if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => {
+                    println!("VK_ERROR_OUR_OF_DEVICE_MEMORY");
+                    break;
+                }
+                //
+                Ok(semaphore) => semaphores[i as usize] = semaphore,
+                //
+                _ => break,
+            }
+        }
+        semaphores
+    }
 
-            match unsafe { device.create_fence(&fence_info, None) } {
+    fn create_fences(device: &ash::Device) -> [vk::Fence; 2] {
+        let mut fences = [vk::Fence::null(); 2];
+        let mut fence_create_info = vk::FenceCreateInfo::builder().build();
+
+        for i in 0..2 {
+            fence_create_info.flags = vk::FenceCreateFlags::empty();
+
+            match unsafe { device.create_fence(&fence_create_info, None) } {
                 Err(e) if e == vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
                     println!("VK_ERROR_OUR_OF_HOST_MEMORY");
                     break;
@@ -218,7 +243,7 @@ impl RustTry {
                 _ => break,
             };
         }
-        return fences;
+        fences
     }
 
     fn create_surface(&mut self) {
@@ -346,7 +371,11 @@ impl RustTry {
 
         unsafe {
             self.device
-                .queue_submit(self.queue, &[submit_info], vk::Fence::null())
+                .queue_submit(
+                    self.queue,
+                    &[submit_info],
+                    self.fences[RENDERING_DONE_INDEX],
+                )
                 .expect("Queue submitting error");
             self.device
                 .device_wait_idle()
@@ -361,18 +390,12 @@ impl RustTry {
     }
 
     pub fn on_render(&self) {
-        unsafe {
-            self.device
-                .reset_command_buffer(self.command_buffer[0], vk::CommandBufferResetFlags::empty())
-                .expect("Command buffer reseting error");
-        }
-
         let (swapchain_image_index, is_suboptimal) = unsafe {
             self.swapchain_loader
                 .acquire_next_image(
                     self.swapchain,
-                    0,
-                    vk::Semaphore::null(),
+                    u64::MAX,
+                    self.semaphores[IMAGE_AVAILABLE_INDEX],
                     self.fences[IMAGE_AVAILABLE_INDEX],
                 )
                 .expect("Next image acquiring error")
@@ -380,14 +403,10 @@ impl RustTry {
 
         unsafe {
             self.device
-                .wait_for_fences(
-                    &self.fences[IMAGE_AVAILABLE_INDEX..RENDERING_DONE_INDEX],
-                    true,
-                    u64::MAX,
-                )
+                .wait_for_fences(&self.fences[..=IMAGE_AVAILABLE_INDEX], true, u64::MAX)
                 .expect("Fences waiting error");
             self.device
-                .reset_fences(&self.fences[IMAGE_AVAILABLE_INDEX..RENDERING_DONE_INDEX])
+                .reset_fences(&self.fences[..=IMAGE_AVAILABLE_INDEX])
                 .expect("Fences reseting error");
             if !self
                 .device
@@ -400,6 +419,10 @@ impl RustTry {
             self.device
                 .reset_fences(&self.fences[RENDERING_DONE_INDEX..])
                 .expect("Fences reseting error");
+
+            self.device
+                .reset_command_buffer(self.command_buffer[0], vk::CommandBufferResetFlags::empty())
+                .expect("Command buffer reseting error");
         }
 
         let swapchain_image = &self.swapchain_images[swapchain_image_index as usize];
@@ -492,8 +515,13 @@ impl RustTry {
                 .expect("Command buffer ending error");
         }
 
+        let wait_dst_stage_mask = vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
+
         let submit_info = vk::SubmitInfo::builder()
+            .wait_semaphores(&self.semaphores[..=IMAGE_AVAILABLE_INDEX])
+            .wait_dst_stage_mask(&[wait_dst_stage_mask])
             .command_buffers(&self.command_buffer[..1])
+            .signal_semaphores(&self.semaphores[RENDERING_DONE_INDEX..])
             .build();
 
         unsafe {
@@ -504,12 +532,10 @@ impl RustTry {
                     self.fences[RENDERING_DONE_INDEX],
                 )
                 .expect("Queue submitting error");
-            self.device
-                .device_wait_idle()
-                .expect("Device waiting error");
         }
 
         let present_info = vk::PresentInfoKHR::builder()
+            .wait_semaphores(&self.semaphores[RENDERING_DONE_INDEX..])
             .swapchains(&[self.swapchain])
             .image_indices(&[swapchain_image_index])
             .build();
@@ -523,6 +549,9 @@ impl RustTry {
 
     pub fn on_shutdown(&mut self) {
         unsafe {
+            self.device
+                .device_wait_idle()
+                .expect("Device waiting error");
             self.swapchain_loader
                 .destroy_swapchain(self.swapchain, None);
             self.surface_loader.destroy_surface(self.surface, None);
@@ -580,6 +609,9 @@ impl RustTry {
 impl Drop for RustTry {
     fn drop(&mut self) {
         unsafe {
+            for semaphore in self.semaphores {
+                self.device.destroy_semaphore(semaphore, None);
+            }
             for fence in self.fences {
                 self.device.destroy_fence(fence, None);
             }
