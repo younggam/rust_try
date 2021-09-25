@@ -9,7 +9,7 @@ fn main() {
         .expect("Failed to create window.");
     let mut rust_try = RustTry::new(window);
 
-    //TODO: panic이든 뭐든 무조건 종료(정리) 실행
+    //
     event_loop.run(move |event, _, control_flow| match event {
         winit::event::Event::NewEvents(event) => match event {
             winit::event::StartCause::Init => {

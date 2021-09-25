@@ -1,0 +1,4 @@
+use rust_try_lib::*;
+
+fn main() {
+    VulkanApp::run();
