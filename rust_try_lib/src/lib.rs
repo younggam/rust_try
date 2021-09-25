@@ -414,7 +414,8 @@ impl RustTry {
                 .expect("Fence status getting error")
             {
                 self.device
-                    .wait_for_fences(&self.fences[RENDERING_DONE_INDEX..], true, u64::MAX);
+                    .wait_for_fences(&self.fences[RENDERING_DONE_INDEX..], true, u64::MAX)
+                    .expect("Fences waiting error");
             }
             self.device
                 .reset_fences(&self.fences[RENDERING_DONE_INDEX..])
