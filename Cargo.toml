@@ -1,5 +1,5 @@
 [workspace]
-members=[
+members = [
     "rust_try_main",
     "rust_try_lib"
 ]
