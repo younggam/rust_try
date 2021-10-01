@@ -11,14 +11,14 @@ pub struct RustTry {
 }
 
 impl RustTry {
-    pub fn new() -> RustTry {
+    pub fn new() -> Self {
         let entry = unsafe { ash::Entry::new().expect("Vulkan functions loading error") };
         let instance = Self::create_instance(&entry);
         let physical_device = Self::create_physical_device(&instance);
         let queue_family_index = Self::find_queue_family_index(&instance, &physical_device);
         let device = Self::create_device(&instance, &queue_family_index, &physical_device);
 
-        RustTry {
+        Self {
             entry,
             instance,
             physical_device,

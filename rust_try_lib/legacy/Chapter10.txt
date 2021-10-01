@@ -1184,6 +1184,39 @@ impl RustTry {
         layer_properties.iter().for_each(|x| println!("{:#?}", x));
         println!("\n");
     }
+
+    pub fn print_instance_extensions_properties(&self) {
+        let instance_extension_properties = self
+            .entry
+            .enumerate_instance_extension_properties()
+            .expect("There is no available extension");
+        instance_extension_properties
+            .iter()
+            .for_each(|x| println!("{:#?}", x));
+        println!("\n");
+    }
+
+    pub fn print_device_extensions_properties(&self) {
+        let device_extension_properties = unsafe {
+            self.instance
+                .enumerate_device_extension_properties(self.physical_device)
+                .expect("There is no available extension")
+        };
+        device_extension_properties
+            .iter()
+            .for_each(|x| println!("{:#?}", x));
+    }
+
+    pub fn print_present_modes(&self) {
+        let present_modes = unsafe {
+            self.surface_loader
+                .get_physical_device_surface_present_modes(self.physical_device, self.surface)
+                .expect("There is no available present modes")
+        };
+        present_modes
+            .iter()
+            .for_each(|mode| println!("{:#?}", mode));
+    }
 }
 
 impl Drop for RustTry {
