@@ -7,7 +7,7 @@ fn main() {
         .with_inner_size(winit::dpi::LogicalSize::new(512, 512))
         .build(&event_loop)
         .expect("Failed to create window.");
-    let mut rust_try = RustTry::new(window);
+    let mut rust_try = rust_try::RustTry::new(window);
 
     //TODO: panic이든 뭐든 무조건 종료(정리) 실행
     event_loop.run(move |event, _, control_flow| match event {
