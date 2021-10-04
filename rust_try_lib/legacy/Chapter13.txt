@@ -2,7 +2,9 @@ use ash;
 use ash::vk;
 use ash_window;
 use image;
-use shaderc;
+use naga::back::spv;
+use naga::front::glsl;
+use naga::valid;
 use std::ffi::CString;
 pub use winit;
 
@@ -15,7 +17,6 @@ macro_rules! offset_of {
     }};
 }
 
-const SWAPCHIAN_IMAGE_COUNT: usize = 2;
 const IMAGE_AVAILABLE_INDEX: usize = 0;
 const RENDERING_DONE_INDEX: usize = 1;
 
@@ -68,16 +69,15 @@ pub struct RustTry {
     device: ash::Device,
     queue: vk::Queue,
     command_pool: vk::CommandPool,
-    frame_index: usize,
-    command_buffers: [vk::CommandBuffer; SWAPCHIAN_IMAGE_COUNT],
-    semaphores: [[vk::Semaphore; 2]; SWAPCHIAN_IMAGE_COUNT],
-    fences: [vk::Fence; SWAPCHIAN_IMAGE_COUNT],
+    command_buffer: vk::CommandBuffer,
+    semaphores: [vk::Semaphore; 2],
+    fence: vk::Fence,
     vertex_buffer: vk::Buffer,
     vertex_device_memory: vk::DeviceMemory,
     index_buffer: vk::Buffer,
     index_device_memory: vk::DeviceMemory,
-    uniform_buffers: [vk::Buffer; SWAPCHIAN_IMAGE_COUNT],
-    uniform_device_memories: [vk::DeviceMemory; SWAPCHIAN_IMAGE_COUNT],
+    uniform_buffer: vk::Buffer,
+    uniform_device_memory: vk::DeviceMemory,
     texture_image: vk::Image,
     texture_device_memory: vk::DeviceMemory,
     texture_image_view: vk::ImageView,
@@ -97,8 +97,8 @@ pub struct RustTry {
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     descriptor_pool: vk::DescriptorPool,
-    material_descriptor_sets: [vk::DescriptorSet; SWAPCHIAN_IMAGE_COUNT],
-    texture_descriptor_sets: [vk::DescriptorSet; SWAPCHIAN_IMAGE_COUNT],
+    material_descriptor_set: vk::DescriptorSet,
+    texture_descriptor_set: vk::DescriptorSet,
 }
 
 impl RustTry {
@@ -112,9 +112,9 @@ impl RustTry {
         let device = Self::create_device(&instance, &queue_family_index, &physical_device);
         let queue = unsafe { device.get_device_queue(queue_family_index, 0) };
         let command_pool = Self::create_command_pool(&device, &queue_family_index);
-        let command_buffers = Self::allocate_command_buffers(&device, &command_pool);
+        let command_buffer = Self::allocate_command_buffer(&device, &command_pool);
         let semaphores = Self::create_semaphores(&device);
-        let fences = Self::create_fences(&device);
+        let fence = Self::create_fence(&device);
         let (vertex_buffer, vertex_device_memory) =
             Self::create_vertex_resources(&device, &physical_device_memory_properties);
         let (index_buffer, index_device_memory) = Self::init_index_resources(
@@ -123,7 +123,7 @@ impl RustTry {
             &command_pool,
             &queue,
         );
-        let (uniform_buffers, uniform_device_memories) =
+        let (uniform_buffer, uniform_device_memory) =
             Self::create_uniform_resources(&device, &physical_device_memory_properties);
         let (texture_image, texture_device_memory, texture_image_view, texture_sampler) =
             Self::init_texture_resources(
@@ -145,16 +145,15 @@ impl RustTry {
             device,
             queue,
             command_pool,
-            frame_index: 0,
-            command_buffers,
+            command_buffer,
             semaphores,
-            fences,
+            fence,
             vertex_buffer,
             vertex_device_memory,
             index_buffer,
             index_device_memory,
-            uniform_buffers,
-            uniform_device_memories,
+            uniform_buffer,
+            uniform_device_memory,
             texture_image,
             texture_device_memory,
             texture_image_view,
@@ -177,8 +176,8 @@ impl RustTry {
             pipeline_layout: vk::PipelineLayout::null(),
             pipeline: vk::Pipeline::null(),
             descriptor_pool: vk::DescriptorPool::null(),
-            material_descriptor_sets: [vk::DescriptorSet::null(); SWAPCHIAN_IMAGE_COUNT],
-            texture_descriptor_sets: [vk::DescriptorSet::null(); SWAPCHIAN_IMAGE_COUNT],
+            material_descriptor_set: vk::DescriptorSet::null(),
+            texture_descriptor_set: vk::DescriptorSet::null(),
         }
     }
 
@@ -289,58 +288,47 @@ impl RustTry {
         }
     }
 
-    fn allocate_command_buffers(
+    fn allocate_command_buffer(
         device: &ash::Device,
         command_pool: &vk::CommandPool,
-    ) -> [vk::CommandBuffer; SWAPCHIAN_IMAGE_COUNT] {
+    ) -> vk::CommandBuffer {
         let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(*command_pool)
             .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(SWAPCHIAN_IMAGE_COUNT as u32)
+            .command_buffer_count(1)
             .build();
 
-        let command_buffers = unsafe {
+        unsafe {
             device
                 .allocate_command_buffers(&command_buffer_allocate_info)
-                .expect("Command buffers allocation error")
-        };
-
-        [command_buffers[0], command_buffers[1]]
+                .expect("Command buffers allocation error")[0]
+        }
     }
 
-    fn create_semaphores(device: &ash::Device) -> [[vk::Semaphore; 2]; SWAPCHIAN_IMAGE_COUNT] {
+    fn create_semaphores(device: &ash::Device) -> [vk::Semaphore; 2] {
+        let mut semaphores = [vk::Semaphore::null(); 2];
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
-        let mut semaphores = [[vk::Semaphore::null(); 2]; SWAPCHIAN_IMAGE_COUNT];
 
-        unsafe {
-            for i in 0..SWAPCHIAN_IMAGE_COUNT {
-                for j in 0..SWAPCHIAN_IMAGE_COUNT {
-                    semaphores[i][j] = device
-                        .create_semaphore(&semaphore_create_info, None)
-                        .expect("Semaphore creation error");
-                }
-            }
+        for i in 0..2 {
+            semaphores[i as usize] = unsafe {
+                device
+                    .create_semaphore(&semaphore_create_info, None)
+                    .expect("Semaphore creation error")
+            };
         }
-
         semaphores
     }
 
-    fn create_fences(device: &ash::Device) -> [vk::Fence; SWAPCHIAN_IMAGE_COUNT] {
+    fn create_fence(device: &ash::Device) -> vk::Fence {
         let fence_create_info = vk::FenceCreateInfo::builder()
             .flags(vk::FenceCreateFlags::SIGNALED)
             .build();
 
-        let mut fences = [vk::Fence::null(); SWAPCHIAN_IMAGE_COUNT];
-
         unsafe {
-            for i in 0..SWAPCHIAN_IMAGE_COUNT {
-                fences[i] = device
-                    .create_fence(&fence_create_info, None)
-                    .expect("Fence creation error")
-            }
+            device
+                .create_fence(&fence_create_info, None)
+                .expect("Fence creation error")
         }
-
-        fences
     }
 
     fn find_memory_index(
@@ -587,51 +575,43 @@ impl RustTry {
     fn create_uniform_resources(
         device: &ash::Device,
         physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
-    ) -> (
-        [vk::Buffer; SWAPCHIAN_IMAGE_COUNT],
-        [vk::DeviceMemory; SWAPCHIAN_IMAGE_COUNT],
-    ) {
-        let mut uniform_buffers = [vk::Buffer::null(); SWAPCHIAN_IMAGE_COUNT];
-        let mut uniform_device_memories = [vk::DeviceMemory::null(); SWAPCHIAN_IMAGE_COUNT];
+    ) -> (vk::Buffer, vk::DeviceMemory) {
+        let buffer_create_info = vk::BufferCreateInfo::builder()
+            .size(std::mem::size_of::<Material>() as vk::DeviceSize)
+            .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
+            .build();
 
-        for i in 0..SWAPCHIAN_IMAGE_COUNT {
-            let buffer_create_info = vk::BufferCreateInfo::builder()
-                .size(std::mem::size_of::<Material>() as vk::DeviceSize)
-                .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
-                .build();
+        let uniform_buffer = unsafe {
+            device
+                .create_buffer(&buffer_create_info, None)
+                .expect("Buffer creation error")
+        };
 
-            uniform_buffers[i] = unsafe {
-                device
-                    .create_buffer(&buffer_create_info, None)
-                    .expect("Buffer creation error")
-            };
+        let buffer_memory_requirements =
+            unsafe { device.get_buffer_memory_requirements(uniform_buffer) };
 
-            let buffer_memory_requirements =
-                unsafe { device.get_buffer_memory_requirements(uniform_buffers[i]) };
+        let memory_allocate_info = vk::MemoryAllocateInfo::builder()
+            .allocation_size(buffer_memory_requirements.size)
+            .memory_type_index(Self::find_memory_index(
+                physical_device_memory_properties,
+                &buffer_memory_requirements,
+                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            ))
+            .build();
 
-            let memory_allocate_info = vk::MemoryAllocateInfo::builder()
-                .allocation_size(buffer_memory_requirements.size)
-                .memory_type_index(Self::find_memory_index(
-                    physical_device_memory_properties,
-                    &buffer_memory_requirements,
-                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-                ))
-                .build();
+        let uniform_device_memory = unsafe {
+            device
+                .allocate_memory(&memory_allocate_info, None)
+                .expect("Memory allocation error")
+        };
 
-            uniform_device_memories[i] = unsafe {
-                device
-                    .allocate_memory(&memory_allocate_info, None)
-                    .expect("Memory allocation error")
-            };
-
-            unsafe {
-                device
-                    .bind_buffer_memory(uniform_buffers[i], uniform_device_memories[i], 0)
-                    .expect("Buffer memory binding error")
-            }
+        unsafe {
+            device
+                .bind_buffer_memory(uniform_buffer, uniform_device_memory, 0)
+                .expect("Buffer memory binding error")
         }
 
-        (uniform_buffers, uniform_device_memories)
+        (uniform_buffer, uniform_device_memory)
     }
 
     fn init_texture_resources(
@@ -995,10 +975,7 @@ impl RustTry {
 
         unsafe {
             self.device
-                .begin_command_buffer(
-                    self.command_buffers[self.frame_index],
-                    &command_buffer_begin_info,
-                )
+                .begin_command_buffer(self.command_buffer, &command_buffer_begin_info)
                 .expect("Command buffer begining error");
         }
 
@@ -1024,7 +1001,7 @@ impl RustTry {
 
         unsafe {
             self.device.cmd_pipeline_barrier(
-                self.command_buffers[self.frame_index],
+                self.command_buffer,
                 vk::PipelineStageFlags::TOP_OF_PIPE,
                 vk::PipelineStageFlags::BOTTOM_OF_PIPE,
                 vk::DependencyFlags::empty(),
@@ -1033,12 +1010,12 @@ impl RustTry {
                 &image_memory_barriers,
             );
             self.device
-                .end_command_buffer(self.command_buffers[self.frame_index])
+                .end_command_buffer(self.command_buffer)
                 .expect("Command buffer ending error");
         }
 
         let submit_info = vk::SubmitInfo::builder()
-            .command_buffers(&[self.command_buffers[self.frame_index]])
+            .command_buffers(&[self.command_buffer])
             .build();
 
         unsafe {
@@ -1393,16 +1370,16 @@ impl RustTry {
         let descriptor_pool_sizes = [
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::UNIFORM_BUFFER,
-                descriptor_count: 2,
+                descriptor_count: 1,
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 2,
+                descriptor_count: 1,
             },
         ];
 
         let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
-            .max_sets(4)
+            .max_sets(2)
             .pool_sizes(&descriptor_pool_sizes)
             .build();
 
@@ -1414,29 +1391,27 @@ impl RustTry {
     }
 
     fn create_descriptor_sets(&mut self) {
-        for i in 0..SWAPCHIAN_IMAGE_COUNT {
-            let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
-                .descriptor_pool(self.descriptor_pool)
-                .set_layouts(&[self.material_descriptor_set_layout])
-                .build();
+        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
+            .descriptor_pool(self.descriptor_pool)
+            .set_layouts(&[self.material_descriptor_set_layout])
+            .build();
 
-            self.material_descriptor_sets[i] = unsafe {
-                self.device
-                    .allocate_descriptor_sets(&descriptor_set_allocate_info)
-                    .expect("Descriptor sets creation error")[0]
-            };
+        self.material_descriptor_set = unsafe {
+            self.device
+                .allocate_descriptor_sets(&descriptor_set_allocate_info)
+                .expect("Descriptor sets creation error")[0]
+        };
 
-            let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
-                .descriptor_pool(self.descriptor_pool)
-                .set_layouts(&[self.texture_descriptor_set_layout])
-                .build();
+        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
+            .descriptor_pool(self.descriptor_pool)
+            .set_layouts(&[self.texture_descriptor_set_layout])
+            .build();
 
-            self.texture_descriptor_sets[i] = unsafe {
-                self.device
-                    .allocate_descriptor_sets(&descriptor_set_allocate_info)
-                    .expect("Descriptor sets creation error")[0]
-            };
-        }
+        self.texture_descriptor_set = unsafe {
+            self.device
+                .allocate_descriptor_sets(&descriptor_set_allocate_info)
+                .expect("Descriptor sets creation error")[0]
+        };
     }
 
     pub fn on_startup(&mut self) {
@@ -1454,13 +1429,13 @@ impl RustTry {
         self.create_descriptor_sets();
     }
 
-    pub fn on_render(&mut self) {
+    pub fn on_render(&self) {
         let (swapchain_image_index, _is_suboptimal) = unsafe {
             self.swapchain_loader
                 .acquire_next_image(
                     self.swapchain,
                     u64::MAX,
-                    self.semaphores[self.frame_index][IMAGE_AVAILABLE_INDEX],
+                    self.semaphores[IMAGE_AVAILABLE_INDEX],
                     vk::Fence::null(),
                 )
                 .expect("Next image acquiring error")
@@ -1472,28 +1447,28 @@ impl RustTry {
         unsafe {
             if !self
                 .device
-                .get_fence_status(self.fences[self.frame_index])
+                .get_fence_status(self.fence)
                 .expect("Fence status getting error")
             {
                 self.device
-                    .wait_for_fences(&[self.fences[self.frame_index]], true, u64::MAX)
+                    .wait_for_fences(&[self.fence], true, u64::MAX)
                     .expect("Fences waiting error");
             }
             self.device
-                .reset_fences(&[self.fences[self.frame_index]])
+                .reset_fences(&[self.fence])
                 .expect("Fences reseting error");
         }
 
         let material_memory_size = std::mem::size_of::<Material>() as vk::DeviceSize;
 
         let descriptor_buffer_info = vk::DescriptorBufferInfo {
-            buffer: self.uniform_buffers[self.frame_index],
+            buffer: self.uniform_buffer,
             offset: 0,
             range: material_memory_size,
         };
 
         let write_descriptor_set = vk::WriteDescriptorSet::builder()
-            .dst_set(self.material_descriptor_sets[self.frame_index])
+            .dst_set(self.material_descriptor_set)
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .buffer_info(&[descriptor_buffer_info])
@@ -1511,7 +1486,7 @@ impl RustTry {
         };
 
         let write_descriptor_set = vk::WriteDescriptorSet::builder()
-            .dst_set(self.texture_descriptor_sets[self.frame_index])
+            .dst_set(self.texture_descriptor_set)
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .image_info(&[descriptor_image_info])
@@ -1526,7 +1501,7 @@ impl RustTry {
             let material: *mut Material =
                 self.device
                     .map_memory(
-                        self.uniform_device_memories[self.frame_index],
+                        self.uniform_device_memory,
                         0,
                         material_memory_size,
                         vk::MemoryMapFlags::empty(),
@@ -1543,16 +1518,12 @@ impl RustTry {
             (*material).g = value;
             (*material).b = value;
 
-            self.device
-                .unmap_memory(self.uniform_device_memories[self.frame_index]);
+            self.device.unmap_memory(self.uniform_device_memory);
         }
 
         unsafe {
             self.device
-                .reset_command_buffer(
-                    self.command_buffers[self.frame_index],
-                    vk::CommandBufferResetFlags::empty(),
-                )
+                .reset_command_buffer(self.command_buffer, vk::CommandBufferResetFlags::empty())
                 .expect("Command buffer reseting error");
         }
 
@@ -1562,10 +1533,7 @@ impl RustTry {
 
         unsafe {
             self.device
-                .begin_command_buffer(
-                    self.command_buffers[self.frame_index],
-                    &command_buffer_begin_info,
-                )
+                .begin_command_buffer(self.command_buffer, &command_buffer_begin_info)
                 .expect("Command buffer begining error");
         }
 
@@ -1586,7 +1554,7 @@ impl RustTry {
 
         unsafe {
             self.device.cmd_pipeline_barrier(
-                self.command_buffers[self.frame_index],
+                self.command_buffer,
                 vk::PipelineStageFlags::TOP_OF_PIPE,
                 vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                 vk::DependencyFlags::empty(),
@@ -1616,54 +1584,53 @@ impl RustTry {
 
         unsafe {
             self.device.cmd_begin_render_pass(
-                self.command_buffers[self.frame_index],
+                self.command_buffer,
                 &render_pass_begin_info,
                 vk::SubpassContents::INLINE,
             );
 
             self.device.cmd_bind_vertex_buffers(
-                self.command_buffers[self.frame_index],
+                self.command_buffer,
                 0,
                 &[self.vertex_buffer],
                 &[0],
             );
 
             self.device.cmd_bind_index_buffer(
-                self.command_buffers[self.frame_index],
+                self.command_buffer,
                 self.index_buffer,
                 0,
                 vk::IndexType::UINT16,
             );
 
             self.device.cmd_bind_pipeline(
-                self.command_buffers[self.frame_index],
+                self.command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
                 self.pipeline,
             );
 
             self.device.cmd_bind_descriptor_sets(
-                self.command_buffers[self.frame_index],
+                self.command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
                 self.pipeline_layout,
                 0,
-                &[self.material_descriptor_sets[self.frame_index]],
+                &[self.material_descriptor_set],
                 &[],
             );
 
             self.device.cmd_bind_descriptor_sets(
-                self.command_buffers[self.frame_index],
+                self.command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
                 self.pipeline_layout,
                 1,
-                &[self.texture_descriptor_sets[self.frame_index]],
+                &[self.material_descriptor_set],
                 &[],
             );
 
             self.device
-                .cmd_draw_indexed(self.command_buffers[self.frame_index], 3, 1, 0, 0, 0);
+                .cmd_draw_indexed(self.command_buffer, 3, 1, 0, 0, 0);
 
-            self.device
-                .cmd_end_render_pass(self.command_buffers[self.frame_index]);
+            self.device.cmd_end_render_pass(self.command_buffer);
         }
 
         let image_memory_barrier = vk::ImageMemoryBarrier::builder()
@@ -1683,7 +1650,7 @@ impl RustTry {
 
         unsafe {
             self.device.cmd_pipeline_barrier(
-                self.command_buffers[self.frame_index],
+                self.command_buffer,
                 vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                 vk::PipelineStageFlags::BOTTOM_OF_PIPE,
                 vk::DependencyFlags::empty(),
@@ -1692,27 +1659,27 @@ impl RustTry {
                 &[image_memory_barrier],
             );
             self.device
-                .end_command_buffer(self.command_buffers[self.frame_index])
+                .end_command_buffer(self.command_buffer)
                 .expect("Command buffer ending error");
         }
 
         let wait_dst_stage_mask = vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
 
         let submit_info = vk::SubmitInfo::builder()
-            .wait_semaphores(&self.semaphores[self.frame_index][..=IMAGE_AVAILABLE_INDEX])
+            .wait_semaphores(&self.semaphores[..=IMAGE_AVAILABLE_INDEX])
             .wait_dst_stage_mask(&[wait_dst_stage_mask])
-            .command_buffers(&[self.command_buffers[self.frame_index]])
-            .signal_semaphores(&self.semaphores[self.frame_index][RENDERING_DONE_INDEX..])
+            .command_buffers(&[self.command_buffer])
+            .signal_semaphores(&self.semaphores[RENDERING_DONE_INDEX..])
             .build();
 
         unsafe {
             self.device
-                .queue_submit(self.queue, &[submit_info], self.fences[self.frame_index])
+                .queue_submit(self.queue, &[submit_info], self.fence)
                 .expect("Queue submitting error");
         }
 
         let present_info = vk::PresentInfoKHR::builder()
-            .wait_semaphores(&self.semaphores[self.frame_index][RENDERING_DONE_INDEX..])
+            .wait_semaphores(&self.semaphores[RENDERING_DONE_INDEX..])
             .swapchains(&[self.swapchain])
             .image_indices(&[swapchain_image_index as u32])
             .build();
@@ -1722,8 +1689,6 @@ impl RustTry {
                 .queue_present(self.queue, &present_info)
                 .expect("Queue presenting error");
         }
-
-        self.frame_index = (1 + self.frame_index) % SWAPCHIAN_IMAGE_COUNT;
     }
 
     pub fn on_shutdown(&mut self) {
@@ -1739,8 +1704,6 @@ impl RustTry {
                 .destroy_pipeline_layout(self.pipeline_layout, None);
             self.device
                 .destroy_descriptor_set_layout(self.material_descriptor_set_layout, None);
-            self.device
-                .destroy_descriptor_set_layout(self.texture_descriptor_set_layout, None);
             for shader_module in self.shader_modules {
                 self.device.destroy_shader_module(shader_module, None);
             }
@@ -1775,23 +1738,15 @@ impl Drop for RustTry {
                 .destroy_image_view(self.texture_image_view, None);
             self.device.free_memory(self.texture_device_memory, None);
             self.device.destroy_image(self.texture_image, None);
-            for uniform_device_memory in self.uniform_device_memories {
-                self.device.free_memory(uniform_device_memory, None);
-            }
-            for uniform_buffer in self.uniform_buffers {
-                self.device.destroy_buffer(uniform_buffer, None);
-            }
+            self.device.free_memory(self.uniform_device_memory, None);
+            self.device.destroy_buffer(self.uniform_buffer, None);
             self.device.free_memory(self.index_device_memory, None);
             self.device.destroy_buffer(self.index_buffer, None);
             self.device.free_memory(self.vertex_device_memory, None);
             self.device.destroy_buffer(self.vertex_buffer, None);
-            for fence in self.fences {
-                self.device.destroy_fence(fence, None);
-            }
-            for semaphores_ in self.semaphores {
-                for semaphore in semaphores_ {
-                    self.device.destroy_semaphore(semaphore, None);
-                }
+            self.device.destroy_fence(self.fence, None);
+            for semaphore in self.semaphores {
+                self.device.destroy_semaphore(semaphore, None);
             }
             self.device.destroy_command_pool(self.command_pool, None);
             self.device.destroy_device(None);

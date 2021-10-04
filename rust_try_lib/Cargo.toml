@@ -9,5 +9,5 @@ edition = "2018"
 ash = "0.33.3+1.2.191"
 ash-window = "0.7.0"
 winit = "0.25.0"
-naga = { version = "0.6.3", features = ["glsl-in", "spv-out"] }
+shaderc = "0.7.3"
 image = { version = "0.23.14", default-features = false, features = ["png"] }
