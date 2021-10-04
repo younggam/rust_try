@@ -1,6 +1,7 @@
 use ash;
 use ash::vk;
 use ash_window;
+use image;
 use naga::back::spv;
 use naga::front::glsl;
 use naga::valid;
@@ -27,11 +28,22 @@ struct Vertex {
     r: f32,
     g: f32,
     b: f32,
+    u: f32,
+    v: f32,
 }
 
 impl Vertex {
-    fn new(x: f32, y: f32, z: f32, r: f32, g: f32, b: f32) -> Self {
-        Self { x, y, z, r, g, b }
+    fn new(x: f32, y: f32, z: f32, r: f32, g: f32, b: f32, u: f32, v: f32) -> Self {
+        Self {
+            x,
+            y,
+            z,
+            r,
+            g,
+            b,
+            u,
+            v,
+        }
     }
 }
 
@@ -66,6 +78,10 @@ pub struct RustTry {
     index_device_memory: vk::DeviceMemory,
     uniform_buffer: vk::Buffer,
     uniform_device_memory: vk::DeviceMemory,
+    texture_image: vk::Image,
+    texture_device_memory: vk::DeviceMemory,
+    texture_image_view: vk::ImageView,
+    texture_sampler: vk::Sampler,
     surface_loader: ash::extensions::khr::Surface,
     surface: vk::SurfaceKHR,
     swapchain_loader: ash::extensions::khr::Swapchain,
@@ -77,10 +93,12 @@ pub struct RustTry {
     framebuffers: Vec<vk::Framebuffer>,
     shader_modules: [vk::ShaderModule; 2],
     material_descriptor_set_layout: vk::DescriptorSetLayout,
+    texture_descriptor_set_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     descriptor_pool: vk::DescriptorPool,
     material_descriptor_set: vk::DescriptorSet,
+    texture_descriptor_set: vk::DescriptorSet,
 }
 
 impl RustTry {
@@ -99,7 +117,7 @@ impl RustTry {
         let fence = Self::create_fence(&device);
         let (vertex_buffer, vertex_device_memory) =
             Self::create_vertex_resources(&device, &physical_device_memory_properties);
-        let (index_buffer, index_device_memory) = Self::create_index_resources(
+        let (index_buffer, index_device_memory) = Self::init_index_resources(
             &device,
             &physical_device_memory_properties,
             &command_pool,
@@ -107,6 +125,14 @@ impl RustTry {
         );
         let (uniform_buffer, uniform_device_memory) =
             Self::create_uniform_resources(&device, &physical_device_memory_properties);
+        let (texture_image, texture_device_memory, texture_image_view, texture_sampler) =
+            Self::init_texture_resources(
+                &device,
+                &physical_device_memory_properties,
+                &command_pool,
+                &queue_family_index,
+                &queue,
+            );
         let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
         let swapchain_loader = ash::extensions::khr::Swapchain::new(&instance, &device);
 
@@ -128,6 +154,10 @@ impl RustTry {
             index_device_memory,
             uniform_buffer,
             uniform_device_memory,
+            texture_image,
+            texture_device_memory,
+            texture_image_view,
+            texture_sampler,
             surface_loader,
             surface: vk::SurfaceKHR::null(),
             swapchain_loader,
@@ -142,10 +172,12 @@ impl RustTry {
             framebuffers: Vec::<vk::Framebuffer>::new(),
             shader_modules: [vk::ShaderModule::null(); 2],
             material_descriptor_set_layout: vk::DescriptorSetLayout::null(),
+            texture_descriptor_set_layout: vk::DescriptorSetLayout::null(),
             pipeline_layout: vk::PipelineLayout::null(),
             pipeline: vk::Pipeline::null(),
             descriptor_pool: vk::DescriptorPool::null(),
             material_descriptor_set: vk::DescriptorSet::null(),
+            texture_descriptor_set: vk::DescriptorSet::null(),
         }
     }
 
@@ -177,24 +209,10 @@ impl RustTry {
             .build();
         //
 
-        match unsafe { entry.create_instance(&instance_create_info, None) } {
-            Ok(instance) => instance,
-            Err(instance_error) => {
-                match instance_error {
-                    ash::InstanceError::LoadError(errors) => {
-                        errors.iter().for_each(|e| println!("{}", e.to_string()))
-                    }
-                    ash::InstanceError::VkError(e) => match e {
-                        vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_INITIALIZATION_FAILED => println!("{}", e.to_string()),
-                        vk::Result::ERROR_LAYER_NOT_PRESENT => println!("{}", e.to_string()),
-                        vk::Result::ERROR_INCOMPATIBLE_DRIVER => println!("{}", e.to_string()),
-                        _ => {}
-                    },
-                };
-                panic!("Instance creation error");
-            }
+        unsafe {
+            entry
+                .create_instance(&instance_create_info, None)
+                .expect("Instance creation error")
         }
     }
 
@@ -250,21 +268,10 @@ impl RustTry {
             .enabled_extension_names(&device_extension_names_raw)
             .build();
 
-        match unsafe { instance.create_device(*physical_device, &device_create_info, None) } {
-            Ok(device) => device,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_INITIALIZATION_FAILED => println!("{}", e.to_string()),
-                    vk::Result::ERROR_EXTENSION_NOT_PRESENT => println!("{}", e.to_string()),
-                    vk::Result::ERROR_FEATURE_NOT_PRESENT => println!("{}", e.to_string()),
-                    vk::Result::ERROR_TOO_MANY_OBJECTS => println!("{}", e.to_string()),
-                    vk::Result::ERROR_DEVICE_LOST => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Device creation error");
-            }
+        unsafe {
+            instance
+                .create_device(*physical_device, &device_create_info, None)
+                .expect("Device creation error")
         }
     }
 
@@ -274,16 +281,10 @@ impl RustTry {
             .queue_family_index(*queue_family_index)
             .build();
 
-        match unsafe { device.create_command_pool(&command_pool_create_info, None) } {
-            Ok(command_pool) => command_pool,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Command pool creation error");
-            }
+        unsafe {
+            device
+                .create_command_pool(&command_pool_create_info, None)
+                .expect("Command pool creation error")
         }
     }
 
@@ -297,16 +298,10 @@ impl RustTry {
             .command_buffer_count(1)
             .build();
 
-        match unsafe { device.allocate_command_buffers(&command_buffer_allocate_info) } {
-            Ok(command_buffers) => command_buffers[0],
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Command buffer allocation error");
-            }
+        unsafe {
+            device
+                .allocate_command_buffers(&command_buffer_allocate_info)
+                .expect("Command buffers allocation error")[0]
         }
     }
 
@@ -315,17 +310,11 @@ impl RustTry {
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
 
         for i in 0..2 {
-            match unsafe { device.create_semaphore(&semaphore_create_info, None) } {
-                Ok(semaphore) => semaphores[i as usize] = semaphore,
-                Err(e) => {
-                    match e {
-                        vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                        _ => {}
-                    };
-                    panic!("Semaphore creation error");
-                }
-            }
+            semaphores[i as usize] = unsafe {
+                device
+                    .create_semaphore(&semaphore_create_info, None)
+                    .expect("Semaphore creation error")
+            };
         }
         semaphores
     }
@@ -335,19 +324,11 @@ impl RustTry {
             .flags(vk::FenceCreateFlags::SIGNALED)
             .build();
 
-        let fence = match unsafe { device.create_fence(&fence_create_info, None) } {
-            Ok(fence) => fence,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Fence creation error");
-            }
-        };
-
-        fence
+        unsafe {
+            device
+                .create_fence(&fence_create_info, None)
+                .expect("Fence creation error")
+        }
     }
 
     fn find_memory_index(
@@ -375,10 +356,10 @@ impl RustTry {
         physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
     ) -> (vk::Buffer, vk::DeviceMemory) {
         let vertices = [
-            //          위치            색상
-            Vertex::new(0.0, -0.5, 0.0, 1.0, 0.0, 0.0),
-            Vertex::new(0.5, 0.5, 0.0, 0.0, 1.0, 0.0),
-            Vertex::new(-0.5, 0.5, 0.0, 0.0, 0.0, 1.0),
+            //          위치            색상           텍스쳐 좌표
+            Vertex::new(0.0, -0.5, 0.0, 1.0, 0.0, 0.0, 0.5, 0.0),
+            Vertex::new(0.5, 0.5, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0),
+            Vertex::new(-0.5, 0.5, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0),
         ];
 
         let buffer_create_info = vk::BufferCreateInfo::builder()
@@ -386,16 +367,10 @@ impl RustTry {
             .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
             .build();
 
-        let vertex_buffer = match unsafe { device.create_buffer(&buffer_create_info, None) } {
-            Ok(vertex_buffer) => vertex_buffer,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Buffer creation error");
-            }
+        let vertex_buffer = unsafe {
+            device
+                .create_buffer(&buffer_create_info, None)
+                .expect("Buffer creation error")
         };
 
         let buffer_memory_requirements =
@@ -410,50 +385,27 @@ impl RustTry {
             ))
             .build();
 
-        let vertex_device_memory =
-            match unsafe { device.allocate_memory(&memory_allocate_info, None) } {
-                Ok(vertex_device_memory) => vertex_device_memory,
-                Err(e) => {
-                    match e {
-                        vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_TOO_MANY_OBJECTS => println!("{}", e.to_string()),
-                        _ => {}
-                    };
-                    panic!("Memory allocation error");
-                }
-            };
-
-        match unsafe { device.bind_buffer_memory(vertex_buffer, vertex_device_memory, 0) } {
-            Ok(_) => {}
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Buffer memory binding error");
-            }
+        let vertex_device_memory = unsafe {
+            device
+                .allocate_memory(&memory_allocate_info, None)
+                .expect("Memory allocation error")
         };
 
-        let contents = match unsafe {
-            device.map_memory(
-                vertex_device_memory,
-                0,
-                buffer_memory_requirements.size,
-                vk::MemoryMapFlags::empty(),
-            )
-        } {
-            Ok(contents) => contents,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_MEMORY_MAP_FAILED => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Memory mapping error");
-            }
+        unsafe {
+            device
+                .bind_buffer_memory(vertex_buffer, vertex_device_memory, 0)
+                .expect("Buffer memory binding error");
+        }
+
+        let contents = unsafe {
+            device
+                .map_memory(
+                    vertex_device_memory,
+                    0,
+                    buffer_memory_requirements.size,
+                    vk::MemoryMapFlags::empty(),
+                )
+                .expect("Memory mapping error")
         };
 
         unsafe {
@@ -470,7 +422,7 @@ impl RustTry {
         (vertex_buffer, vertex_device_memory)
     }
 
-    fn create_index_resources(
+    fn init_index_resources(
         device: &ash::Device,
         physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
         command_pool: &vk::CommandPool,
@@ -484,16 +436,10 @@ impl RustTry {
             .usage(vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST)
             .build();
 
-        let index_buffer = match unsafe { device.create_buffer(&buffer_create_info, None) } {
-            Ok(index_buffer) => index_buffer,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Buffer creation error");
-            }
+        let index_buffer = unsafe {
+            device
+                .create_buffer(&buffer_create_info, None)
+                .expect("Buffer creation error")
         };
 
         let buffer_memory_requirements =
@@ -508,47 +454,27 @@ impl RustTry {
             ))
             .build();
 
-        let index_device_memory =
-            match unsafe { device.allocate_memory(&memory_allocate_info, None) } {
-                Ok(index_device_memory) => index_device_memory,
-                Err(e) => {
-                    match e {
-                        vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_TOO_MANY_OBJECTS => println!("{}", e.to_string()),
-                        _ => {}
-                    };
-                    panic!("Memory allocation error");
-                }
-            };
-
-        match unsafe { device.bind_buffer_memory(index_buffer, index_device_memory, 0) } {
-            Ok(_) => {}
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Buffer memory binding error");
-            }
+        let index_device_memory = unsafe {
+            device
+                .allocate_memory(&memory_allocate_info, None)
+                .expect("Memory allocation error")
         };
+
+        unsafe {
+            device
+                .bind_buffer_memory(index_buffer, index_device_memory, 0)
+                .expect("Buffer memory binding error");
+        }
 
         let buffer_create_info = vk::BufferCreateInfo::builder()
             .size(indices_memory_size)
             .usage(vk::BufferUsageFlags::TRANSFER_SRC)
             .build();
 
-        let staging_buffer = match unsafe { device.create_buffer(&buffer_create_info, None) } {
-            Ok(staging_buffer) => staging_buffer,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Buffer creation error");
-            }
+        let staging_buffer = unsafe {
+            device
+                .create_buffer(&buffer_create_info, None)
+                .expect("Buffer creation error")
         };
 
         let buffer_memory_requirements =
@@ -563,50 +489,27 @@ impl RustTry {
             ))
             .build();
 
-        let staging_device_memory =
-            match unsafe { device.allocate_memory(&memory_allocate_info, None) } {
-                Ok(staging_device_memory) => staging_device_memory,
-                Err(e) => {
-                    match e {
-                        vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_TOO_MANY_OBJECTS => println!("{}", e.to_string()),
-                        _ => {}
-                    };
-                    panic!("Memory allocation error");
-                }
-            };
-
-        match unsafe { device.bind_buffer_memory(staging_buffer, staging_device_memory, 0) } {
-            Ok(_) => {}
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Buffer memory binding error");
-            }
+        let staging_device_memory = unsafe {
+            device
+                .allocate_memory(&memory_allocate_info, None)
+                .expect("Memory allocation error")
         };
 
-        let contents = match unsafe {
-            device.map_memory(
-                staging_device_memory,
-                0,
-                buffer_memory_requirements.size,
-                vk::MemoryMapFlags::empty(),
-            )
-        } {
-            Ok(contents) => contents,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_MEMORY_MAP_FAILED => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Memory mapping error");
-            }
+        unsafe {
+            device
+                .bind_buffer_memory(staging_buffer, staging_device_memory, 0)
+                .expect("Buffer memory binding error");
+        }
+
+        let contents = unsafe {
+            device
+                .map_memory(
+                    staging_device_memory,
+                    0,
+                    buffer_memory_requirements.size,
+                    vk::MemoryMapFlags::empty(),
+                )
+                .expect("Memory mapping error")
         };
 
         unsafe {
@@ -629,7 +532,7 @@ impl RustTry {
         let command_buffer = unsafe {
             device
                 .allocate_command_buffers(&command_buffer_allocate_info)
-                .expect("Command buffer allocating error")[0]
+                .expect("Command buffers allocating error")[0]
         };
 
         let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
@@ -678,16 +581,10 @@ impl RustTry {
             .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
             .build();
 
-        let uniform_buffer = match unsafe { device.create_buffer(&buffer_create_info, None) } {
-            Ok(uniform_buffer) => uniform_buffer,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Buffer creation error");
-            }
+        let uniform_buffer = unsafe {
+            device
+                .create_buffer(&buffer_create_info, None)
+                .expect("Buffer creation error")
         };
 
         let buffer_memory_requirements =
@@ -702,52 +599,303 @@ impl RustTry {
             ))
             .build();
 
-        let uniform_device_memory =
-            match unsafe { device.allocate_memory(&memory_allocate_info, None) } {
-                Ok(uniform_device_memory) => uniform_device_memory,
-                Err(e) => {
-                    match e {
-                        vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_TOO_MANY_OBJECTS => println!("{}", e.to_string()),
-                        _ => {}
-                    };
-                    panic!("Memory allocation error");
-                }
-            };
-
-        match unsafe { device.bind_buffer_memory(uniform_buffer, uniform_device_memory, 0) } {
-            Ok(_) => {}
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Buffer memory binding error");
-            }
+        let uniform_device_memory = unsafe {
+            device
+                .allocate_memory(&memory_allocate_info, None)
+                .expect("Memory allocation error")
         };
 
+        unsafe {
+            device
+                .bind_buffer_memory(uniform_buffer, uniform_device_memory, 0)
+                .expect("Buffer memory binding error")
+        }
+
         (uniform_buffer, uniform_device_memory)
+    }
+
+    fn init_texture_resources(
+        device: &ash::Device,
+        physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
+        command_pool: &vk::CommandPool,
+        queue_family_index: &u32,
+        queue: &vk::Queue,
+    ) -> (vk::Image, vk::DeviceMemory, vk::ImageView, vk::Sampler) {
+        let image_buffer = image::open("assets/logo.png")
+            .expect("Cannot open image")
+            .to_rgba8();
+        let sample_layout = image_buffer.sample_layout();
+
+        let image_create_info = vk::ImageCreateInfo::builder()
+            .image_type(vk::ImageType::TYPE_2D)
+            .format(vk::Format::R8G8B8A8_UNORM)
+            .extent(vk::Extent3D {
+                width: sample_layout.width,
+                height: sample_layout.height,
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .build();
+
+        let texture_image = unsafe {
+            device
+                .create_image(&image_create_info, None)
+                .expect("Image creation error")
+        };
+
+        let image_memory_requirements =
+            unsafe { device.get_image_memory_requirements(texture_image) };
+
+        let memory_allocate_info = vk::MemoryAllocateInfo::builder()
+            .allocation_size(image_memory_requirements.size)
+            .memory_type_index(Self::find_memory_index(
+                physical_device_memory_properties,
+                &image_memory_requirements,
+                vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            ))
+            .build();
+
+        let texture_device_memory = unsafe {
+            device
+                .allocate_memory(&memory_allocate_info, None)
+                .expect("Memory allocation error")
+        };
+
+        unsafe {
+            device
+                .bind_image_memory(texture_image, texture_device_memory, 0)
+                .expect("Image memory binding error");
+        }
+
+        let buffer_create_info = vk::BufferCreateInfo::builder()
+            .size(
+                (sample_layout.width * sample_layout.height * sample_layout.channels as u32)
+                    as vk::DeviceSize,
+            )
+            .usage(vk::BufferUsageFlags::TRANSFER_SRC)
+            .build();
+
+        let staging_buffer = unsafe {
+            device
+                .create_buffer(&buffer_create_info, None)
+                .expect("Buffer creation error")
+        };
+
+        let buffer_memory_requirements =
+            unsafe { device.get_buffer_memory_requirements(staging_buffer) };
+
+        let memory_allocate_info = vk::MemoryAllocateInfo::builder()
+            .allocation_size(buffer_memory_requirements.size)
+            .memory_type_index(Self::find_memory_index(
+                physical_device_memory_properties,
+                &buffer_memory_requirements,
+                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            ))
+            .build();
+
+        let staging_device_memory = unsafe {
+            device
+                .allocate_memory(&memory_allocate_info, None)
+                .expect("Memory allocation error")
+        };
+
+        unsafe {
+            device
+                .bind_buffer_memory(staging_buffer, staging_device_memory, 0)
+                .expect("Buffer memory binding error")
+        }
+
+        let contents = unsafe {
+            device
+                .map_memory(
+                    staging_device_memory,
+                    0,
+                    buffer_memory_requirements.size,
+                    vk::MemoryMapFlags::empty(),
+                )
+                .expect("Memory mapping error")
+        };
+
+        unsafe {
+            let mut contents = ash::util::Align::new(
+                contents,
+                std::mem::align_of::<u8>() as vk::DeviceSize,
+                buffer_memory_requirements.size,
+            );
+            contents.copy_from_slice(image_buffer.as_raw());
+
+            device.unmap_memory(staging_device_memory);
+        }
+
+        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+            .command_pool(*command_pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1)
+            .build();
+
+        let command_buffer = unsafe {
+            device
+                .allocate_command_buffers(&command_buffer_allocate_info)
+                .expect("Command buffers allocating error")[0]
+        };
+
+        let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+            .build();
+
+        unsafe {
+            device
+                .begin_command_buffer(command_buffer, &command_buffer_begin_info)
+                .expect("Command buffer begining error");
+        }
+
+        let image_memory_barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .src_queue_family_index(*queue_family_index)
+            .dst_queue_family_index(*queue_family_index)
+            .image(texture_image)
+            .subresource_range(
+                vk::ImageSubresourceRange::builder()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .level_count(1)
+                    .layer_count(1)
+                    .build(),
+            )
+            .build();
+
+        unsafe {
+            device.cmd_pipeline_barrier(
+                command_buffer,
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[image_memory_barrier],
+            );
+        }
+
+        let buffer_image_copy = vk::BufferImageCopy::builder()
+            .image_subresource(
+                vk::ImageSubresourceLayers::builder()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .mip_level(0)
+                    .layer_count(1)
+                    .build(),
+            )
+            .image_extent(vk::Extent3D {
+                width: sample_layout.width,
+                height: sample_layout.height,
+                depth: 1,
+            })
+            .build();
+
+        unsafe {
+            device.cmd_copy_buffer_to_image(
+                command_buffer,
+                staging_buffer,
+                texture_image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[buffer_image_copy],
+            );
+        }
+
+        let image_memory_barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .src_queue_family_index(*queue_family_index)
+            .dst_queue_family_index(*queue_family_index)
+            .image(texture_image)
+            .subresource_range(
+                vk::ImageSubresourceRange::builder()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .level_count(1)
+                    .layer_count(1)
+                    .build(),
+            )
+            .build();
+
+        unsafe {
+            device.cmd_pipeline_barrier(
+                command_buffer,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[image_memory_barrier],
+            );
+            device
+                .end_command_buffer(command_buffer)
+                .expect("Command buffer ending error");
+        }
+
+        let submit_info = vk::SubmitInfo::builder()
+            .command_buffers(&[command_buffer])
+            .build();
+
+        unsafe {
+            device
+                .queue_submit(*queue, &[submit_info], vk::Fence::null())
+                .expect("Queue submitting error");
+            device.device_wait_idle().expect("Device waiting error");
+
+            device.free_command_buffers(*command_pool, &[command_buffer]);
+            device.free_memory(staging_device_memory, None);
+            device.destroy_buffer(staging_buffer, None);
+        }
+
+        let image_view_create_info = vk::ImageViewCreateInfo::builder()
+            .image(texture_image)
+            .view_type(vk::ImageViewType::TYPE_2D)
+            .format(vk::Format::R8G8B8A8_UNORM)
+            .subresource_range(
+                vk::ImageSubresourceRange::builder()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .level_count(1)
+                    .layer_count(1)
+                    .build(),
+            )
+            .build();
+
+        let texture_image_view = unsafe {
+            device
+                .create_image_view(&image_view_create_info, None)
+                .expect("Image view creation error")
+        };
+
+        let sampler_create_info = vk::SamplerCreateInfo::builder()
+            .mag_filter(vk::Filter::LINEAR)
+            .min_filter(vk::Filter::LINEAR)
+            .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .build();
+
+        let texture_sampler = unsafe {
+            device
+                .create_sampler(&sampler_create_info, None)
+                .expect("Sampler creation error")
+        };
+
+        (
+            texture_image,
+            texture_device_memory,
+            texture_image_view,
+            texture_sampler,
+        )
     }
 
     fn create_surface(&mut self) {
         unsafe {
             self.surface =
-                match ash_window::create_surface(&self.entry, &self.instance, &self.window, None) {
-                    Ok(surface) => surface,
-                    Err(e) => {
-                        match e {
-                            vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                            vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                            vk::Result::ERROR_NATIVE_WINDOW_IN_USE_KHR => {
-                                println!("{}", e.to_string())
-                            }
-                            _ => {}
-                        };
-                        panic!("Surface creation error");
-                    }
-                };
+                ash_window::create_surface(&self.entry, &self.instance, &self.window, None)
+                    .expect("Surface creation error");
 
             match self.surface_loader.get_physical_device_surface_support(
                 self.physical_device,
@@ -807,24 +955,11 @@ impl RustTry {
             .present_mode(vk::PresentModeKHR::FIFO)
             .build();
 
-        match unsafe {
+        self.swapchain = unsafe {
             self.swapchain_loader
                 .create_swapchain(&swapchain_create_info, None)
-        } {
-            Ok(swapchain) => self.swapchain = swapchain,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_DEVICE_LOST => println!("{}", e.to_string()),
-                    vk::Result::ERROR_SURFACE_LOST_KHR => println!("{}", e.to_string()),
-                    vk::Result::ERROR_NATIVE_WINDOW_IN_USE_KHR => println!("{}", e.to_string()),
-                    vk::Result::ERROR_INITIALIZATION_FAILED => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Swapchain creation error");
-            }
-        }
+                .expect("Swapchain creation error")
+        };
     }
 
     pub fn init_swapchain_images(&mut self) {
@@ -913,17 +1048,11 @@ impl RustTry {
         for swapchain_image in &self.swapchain_images {
             image_view_create_info.image = *swapchain_image;
 
-            match unsafe { self.device.create_image_view(&image_view_create_info, None) } {
-                Ok(image_view) => self.swapchain_image_views.push(image_view),
-                Err(e) => {
-                    match e {
-                        vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                        _ => {}
-                    };
-                    panic!("Image view creation error");
-                }
-            }
+            self.swapchain_image_views.push(unsafe {
+                self.device
+                    .create_image_view(&image_view_create_info, None)
+                    .expect("Image view creation error")
+            });
         }
     }
 
@@ -954,20 +1083,11 @@ impl RustTry {
             .subpasses(&[subpass_description])
             .build();
 
-        match unsafe {
+        self.render_pass = unsafe {
             self.device
                 .create_render_pass(&render_pass_create_info, None)
-        } {
-            Ok(render_pass) => self.render_pass = render_pass,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Render pass creation error");
-            }
-        }
+                .expect("Render pass creation error")
+        };
     }
 
     fn create_framebuffers(&mut self) {
@@ -982,20 +1102,11 @@ impl RustTry {
                 .layers(1)
                 .build();
 
-            match unsafe {
+            self.framebuffers.push(unsafe {
                 self.device
                     .create_framebuffer(&framebuffer_create_info, None)
-            } {
-                Ok(framebuffer) => self.framebuffers.push(framebuffer),
-                Err(e) => {
-                    match e {
-                        vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                        vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                        _ => {}
-                    };
-                    panic!("Render pass creation error");
-                }
-            }
+                    .expect("Render pass creation error")
+            });
         }
     }
 
@@ -1004,14 +1115,17 @@ impl RustTry {
             #version 460
             precision mediump float;
 
-            layout(location = 0) in vec3 i_pos;
+            layout(location = 0) in vec2 i_pos;
             layout(location = 1) in vec3 i_col;
+            layout(location = 2) in vec2 i_uv;
 
             layout(location = 0) out vec3 o_col;
+            layout(location = 1) out vec2 o_uv;
 
             void main() {
-                gl_Position = vec4(i_pos, 1.0);
+                gl_Position = vec4(i_pos, 0.0, 1.0);
                 o_col = i_col;
+                o_uv = i_uv;
             }"#;
 
         let mut parser = glsl::Parser::default();
@@ -1051,20 +1165,11 @@ impl RustTry {
             .code(&vertex_shader_spv)
             .build();
 
-        match unsafe {
+        self.shader_modules[0] = unsafe {
             self.device
                 .create_shader_module(&vertex_shader_module_create_info, None)
-        } {
-            Ok(result) => self.shader_modules[0] = result,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Shader module creation error");
-            }
-        }
+                .expect("Shader module creation error")
+        };
 
         //
 
@@ -1073,6 +1178,7 @@ impl RustTry {
             precision mediump float;
 
             layout(location = 0) in vec3 i_col;
+            layout(location = 1) in vec2 i_uv;
 
             layout(location = 0) out vec4 fragment_color0;
 
@@ -1080,9 +1186,14 @@ impl RustTry {
                 vec3 col;
             } material;
 
+            layout(set = 1, binding = 0) uniform sampler2D tex;
+
             void main() {
-                fragment_color0 = vec4(material.col * i_col, 1.0);
-            }                                               "#;
+                vec3 col = i_col;
+                col *= material.col;
+                col *= texture(tex, i_uv).rgb;
+                fragment_color0 = vec4(col, 1.0);
+            }"#;
 
         let glsl_option = glsl::Options::from(naga::ShaderStage::Fragment);
 
@@ -1110,23 +1221,14 @@ impl RustTry {
             .code(&fragment_shader_spv)
             .build();
 
-        match unsafe {
+        self.shader_modules[1] = unsafe {
             self.device
                 .create_shader_module(&fragment_shader_module_create_info, None)
-        } {
-            Ok(result) => self.shader_modules[1] = result,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Shader module creation error");
-            }
-        }
+                .expect("Shader module creation error")
+        };
     }
 
-    fn create_descriptor_set_layout(&mut self) {
+    fn create_descriptor_set_layouts(&mut self) {
         let descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding::builder()
             .binding(0)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
@@ -1138,43 +1240,45 @@ impl RustTry {
             .bindings(&[descriptor_set_layout_binding])
             .build();
 
-        match unsafe {
+        self.material_descriptor_set_layout = unsafe {
             self.device
                 .create_descriptor_set_layout(&descriptor_set_layout_create_info, None)
-        } {
-            Ok(descriptor_set_layout) => {
-                self.material_descriptor_set_layout = descriptor_set_layout
-            }
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Descriptor set layout creation error");
-            }
-        }
+                .expect("Descriptor set layout creation error")
+        };
+
+        let descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding::builder()
+            .binding(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build();
+
+        let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
+            .bindings(&[descriptor_set_layout_binding])
+            .build();
+
+        self.texture_descriptor_set_layout = unsafe {
+            self.device
+                .create_descriptor_set_layout(&descriptor_set_layout_create_info, None)
+                .expect("Descriptor set layout creation error")
+        };
     }
 
     fn create_pipeline_layout(&mut self) {
+        let descriptor_set_layouts = [
+            self.material_descriptor_set_layout,
+            self.texture_descriptor_set_layout,
+        ];
+
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&[self.material_descriptor_set_layout])
+            .set_layouts(&descriptor_set_layouts)
             .build();
 
-        match unsafe {
+        self.pipeline_layout = unsafe {
             self.device
                 .create_pipeline_layout(&pipeline_layout_create_info, None)
-        } {
-            Ok(pipeline_layout) => self.pipeline_layout = pipeline_layout,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Pipeline layout creation error");
-            }
-        }
+                .expect("Pipeline layout creation error")
+        };
     }
 
     fn create_pipeline(&mut self) {
@@ -1210,6 +1314,12 @@ impl RustTry {
                 binding: 0,
                 format: vk::Format::R32G32B32_SFLOAT,
                 offset: offset_of!(Vertex, r) as u32,
+            },
+            vk::VertexInputAttributeDescription {
+                location: 2,
+                binding: 0,
+                format: vk::Format::R32G32_SFLOAT,
+                offset: offset_of!(Vertex, u) as u32,
             },
         ];
 
@@ -1280,73 +1390,63 @@ impl RustTry {
             .render_pass(self.render_pass)
             .build();
 
-        match unsafe {
-            self.device.create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                &[graphics_pipeline_create_info],
-                None,
-            )
-        } {
-            Ok(pipelines) => self.pipeline = pipelines[0],
-            Err((_, e)) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Pipeline creation error");
-            }
-        }
+        self.pipeline = unsafe {
+            self.device
+                .create_graphics_pipelines(
+                    vk::PipelineCache::null(),
+                    &[graphics_pipeline_create_info],
+                    None,
+                )
+                .expect("Graphics pipeline creation error")[0]
+        };
     }
 
     fn create_descriptor_pool(&mut self) {
-        let descriptor_pool_size = vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 1,
-        };
+        let descriptor_pool_sizes = [
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::UNIFORM_BUFFER,
+                descriptor_count: 1,
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                descriptor_count: 1,
+            },
+        ];
 
         let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
-            .max_sets(1)
-            .pool_sizes(&[descriptor_pool_size])
+            .max_sets(2)
+            .pool_sizes(&descriptor_pool_sizes)
             .build();
 
-        match unsafe {
+        self.descriptor_pool = unsafe {
             self.device
                 .create_descriptor_pool(&descriptor_pool_create_info, None)
-        } {
-            Ok(descriptor_pool) => self.descriptor_pool = descriptor_pool,
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Descriptor pool creation error");
-            }
-        }
+                .expect("Descriptor pool creation error")
+        };
     }
 
-    fn create_descriptor_set(&mut self) {
+    fn create_descriptor_sets(&mut self) {
         let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(self.descriptor_pool)
             .set_layouts(&[self.material_descriptor_set_layout])
             .build();
 
-        match unsafe {
+        self.material_descriptor_set = unsafe {
             self.device
                 .allocate_descriptor_sets(&descriptor_set_allocate_info)
-        } {
-            Ok(descriptor_sets) => self.material_descriptor_set = descriptor_sets[0],
-            Err(e) => {
-                match e {
-                    vk::Result::ERROR_OUT_OF_HOST_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => println!("{}", e.to_string()),
-                    vk::Result::ERROR_OUT_OF_POOL_MEMORY => println!("{}", e.to_string()),
-                    _ => {}
-                };
-                panic!("Descriptor sets creation error");
-            }
-        }
+                .expect("Descriptor sets creation error")[0]
+        };
+
+        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
+            .descriptor_pool(self.descriptor_pool)
+            .set_layouts(&[self.texture_descriptor_set_layout])
+            .build();
+
+        self.texture_descriptor_set = unsafe {
+            self.device
+                .allocate_descriptor_sets(&descriptor_set_allocate_info)
+                .expect("Descriptor sets creation error")[0]
+        };
     }
 
     pub fn on_startup(&mut self) {
@@ -1357,11 +1457,11 @@ impl RustTry {
         self.create_render_pass();
         self.create_framebuffers();
         self.create_shader_modules();
-        self.create_descriptor_set_layout();
+        self.create_descriptor_set_layouts();
         self.create_pipeline_layout();
         self.create_pipeline();
         self.create_descriptor_pool();
-        self.create_descriptor_set();
+        self.create_descriptor_sets();
     }
 
     pub fn on_render(&self) {
@@ -1396,11 +1496,11 @@ impl RustTry {
 
         let material_memory_size = std::mem::size_of::<Material>() as vk::DeviceSize;
 
-        let descriptor_buffer_info = vk::DescriptorBufferInfo::builder()
-            .buffer(self.uniform_buffer)
-            .offset(0)
-            .range(material_memory_size)
-            .build();
+        let descriptor_buffer_info = vk::DescriptorBufferInfo {
+            buffer: self.uniform_buffer,
+            offset: 0,
+            range: material_memory_size,
+        };
 
         let write_descriptor_set = vk::WriteDescriptorSet::builder()
             .dst_set(self.material_descriptor_set)
@@ -1412,7 +1512,27 @@ impl RustTry {
         unsafe {
             self.device
                 .update_descriptor_sets(&[write_descriptor_set], &[]);
+        }
 
+        let descriptor_image_info = vk::DescriptorImageInfo {
+            sampler: self.texture_sampler,
+            image_view: self.texture_image_view,
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        };
+
+        let write_descriptor_set = vk::WriteDescriptorSet::builder()
+            .dst_set(self.texture_descriptor_set)
+            .dst_binding(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(&[descriptor_image_info])
+            .build();
+
+        unsafe {
+            self.device
+                .update_descriptor_sets(&[write_descriptor_set], &[]);
+        }
+
+        unsafe {
             let material: *mut Material =
                 self.device
                     .map_memory(
@@ -1432,13 +1552,6 @@ impl RustTry {
             (*material).r = value;
             (*material).g = value;
             (*material).b = value;
-
-            /*let mut contents = ash::util::Align::new(
-                contents,
-                std::mem::align_of::<Material>() as vk::DeviceSize,
-                material_memory_size,
-            );
-            contents.copy_from_slice(&vertices);*/
 
             self.device.unmap_memory(self.uniform_device_memory);
         }
@@ -1536,6 +1649,15 @@ impl RustTry {
                 vk::PipelineBindPoint::GRAPHICS,
                 self.pipeline_layout,
                 0,
+                &[self.material_descriptor_set],
+                &[],
+            );
+
+            self.device.cmd_bind_descriptor_sets(
+                self.command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline_layout,
+                1,
                 &[self.material_descriptor_set],
                 &[],
             );
@@ -1646,6 +1768,11 @@ impl RustTry {
 impl Drop for RustTry {
     fn drop(&mut self) {
         unsafe {
+            self.device.destroy_sampler(self.texture_sampler, None);
+            self.device
+                .destroy_image_view(self.texture_image_view, None);
+            self.device.free_memory(self.texture_device_memory, None);
+            self.device.destroy_image(self.texture_image, None);
             self.device.free_memory(self.uniform_device_memory, None);
             self.device.destroy_buffer(self.uniform_buffer, None);
             self.device.free_memory(self.index_device_memory, None);
