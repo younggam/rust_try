@@ -1,7 +1,7 @@
 pub use winit;
 
-mod structs;
-pub mod rust_try;
+mod source;
+pub use source::*;
 
 #[macro_export]
 macro_rules! offset_of {

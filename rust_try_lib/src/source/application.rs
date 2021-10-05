@@ -1,5 +1,5 @@
 use crate::offset_of;
-use crate::structs::*;
+use super::structs::*;
 use ash::vk;
 use std::ffi::CString;
 
@@ -7,7 +7,7 @@ const SWAPCHIAN_IMAGE_COUNT: usize = 2;
 const IMAGE_AVAILABLE_INDEX: usize = 0;
 const RENDERING_DONE_INDEX: usize = 1;
 
-pub struct RustTry {
+pub struct Application {
     entry: ash::Entry,
     window: winit::window::Window,
     instance: ash::Instance,
@@ -49,7 +49,7 @@ pub struct RustTry {
     texture_descriptor_sets: [vk::DescriptorSet; SWAPCHIAN_IMAGE_COUNT],
 }
 
-impl RustTry {
+impl Application {
     pub fn new(window: winit::window::Window) -> Self {
         let entry = unsafe { ash::Entry::new().expect("Vulkan functions loading error") };
         let instance = Self::create_instance(&entry);
@@ -1715,7 +1715,7 @@ impl RustTry {
     }
 }
 
-impl Drop for RustTry {
+impl Drop for Application {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_sampler(self.texture_sampler, None);
