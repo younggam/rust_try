@@ -1,5 +1,5 @@
 use crate::offset_of;
-use super::structs::*;
+use crate::structs::*;
 use ash::vk;
 use std::ffi::CString;
 

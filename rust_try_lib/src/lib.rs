@@ -1,7 +1,9 @@
 pub use winit;
 
-mod source;
-pub use source::*;
+mod application;
+pub use application::*;
+mod structs;
+pub use structs::*;
 
 #[macro_export]
 macro_rules! offset_of {
