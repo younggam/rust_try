@@ -52,8 +52,14 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(window: winit::window::Window) -> Self {
+    //TODO: Render 분리해서 Drop 트레잇 없애기
+    pub fn new(name: &str, event_loop: &winit::event_loop::EventLoop<()>) -> Self {
         let entry = unsafe { ash::Entry::new().expect("Vulkan functions loading error") };
+        let window = winit::window::WindowBuilder::new()
+            .with_title(name)
+            .with_inner_size(winit::dpi::LogicalSize::new(512, 512))
+            .build(&event_loop)
+            .expect("Failed to create window.");
         let instance = Self::create_instance(&entry);
         let physical_device = Self::create_physical_device(&instance);
         let physical_device_memory_properties =
@@ -591,7 +597,7 @@ impl Application {
         queue_family_index: &u32,
         queue: &vk::Queue,
     ) -> (vk::Image, vk::DeviceMemory, vk::ImageView, vk::Sampler) {
-        let image_buffer = image::open("assets/logo.png")
+        let image_buffer = image::load_from_memory(include_bytes!("../../assets/logo.png"))
             .expect("Cannot open image")
             .to_rgba8();
         let sample_layout = image_buffer.sample_layout();
@@ -1389,7 +1395,51 @@ impl Application {
         }
     }
 
-    pub fn on_startup(&mut self) {
+    pub fn run(mut self, event_loop: winit::event_loop::EventLoop<()>) {
+        //TODO: panic이든 뭐든 무조건 종료(정리) 실행
+        event_loop.run(move |event, _, control_flow| match event {
+            winit::event::Event::NewEvents(event) => match event {
+                winit::event::StartCause::Init => {
+                    self.on_startup();
+                }
+                _ => {}
+            },
+            winit::event::Event::WindowEvent { event, .. } => match event {
+                winit::event::WindowEvent::KeyboardInput { input, .. } => match input {
+                    winit::event::KeyboardInput {
+                        virtual_keycode,
+                        state,
+                        ..
+                    } => match (virtual_keycode, state) {
+                        (
+                            Some(winit::event::VirtualKeyCode::Escape),
+                            winit::event::ElementState::Pressed,
+                        ) => {
+                            dbg!();
+                            *control_flow = winit::event_loop::ControlFlow::Exit
+                        }
+                        _ => {}
+                    },
+                },
+                winit::event::WindowEvent::CloseRequested => {
+                    *control_flow = winit::event_loop::ControlFlow::Exit;
+                }
+                winit::event::WindowEvent::Destroyed => {
+                    self.on_shutdown();
+                }
+                _ => {}
+            },
+            winit::event::Event::MainEventsCleared => {
+                self.on_render();
+            }
+            winit::event::Event::LoopDestroyed => {
+                self.on_shutdown();
+            }
+            _ => {}
+        });
+    }
+
+    fn on_startup(&mut self) {
         self.create_surface();
         self.create_swapchain();
         self.init_swapchain_images();
@@ -1404,7 +1454,7 @@ impl Application {
         self.create_descriptor_sets();
     }
 
-    pub fn on_render(&mut self) {
+    fn on_render(&mut self) {
         let (swapchain_image_index, _is_suboptimal) = unsafe {
             self.swapchain_loader
                 .acquire_next_image(
@@ -1676,7 +1726,7 @@ impl Application {
         self.frame_index = (1 + self.frame_index) % SWAPCHIAN_IMAGE_COUNT;
     }
 
-    pub fn on_shutdown(&mut self) {
+    fn on_shutdown(&mut self) {
         unsafe {
             self.device
                 .device_wait_idle()
