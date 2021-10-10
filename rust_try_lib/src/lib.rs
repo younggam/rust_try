@@ -14,6 +14,14 @@ pub mod graphics {
     pub use renderer::*;
 }
 
+pub mod math {
+    mod vector;
+    pub use vector::*;
+
+    mod matrix;
+    pub use matrix::*;
+}
+
 pub mod utils {
     mod macros;
     pub(crate) use macros::*;
