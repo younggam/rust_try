@@ -47,8 +47,7 @@ impl Application {
 
     fn main_loop(mut self) {
         //TODO: panic이든 뭐든 무조건 종료(정리) 실행
-        self.event_loop
-            .get_mut()
+        (&mut self.event_loop)
             .consume()
             .run(move |event, _, control_flow| match event {
                 winit::event::Event::WindowEvent { event, .. } => match event {
