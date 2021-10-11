@@ -13,10 +13,8 @@ pub struct Application {
 
 impl Application {
     pub fn new() -> Self {
-        let entry = unsafe { ash::Entry::new().expect("Vulkan functions loading error") };
-
         Self {
-            entry,
+            entry: unsafe { ash::Entry::new().expect("Vulkan functions loading error") },
             event_loop: utils::LazyManual::new(),
             window: utils::LazyManual::new(),
         }
@@ -47,7 +45,7 @@ impl Application {
 
     fn main_loop(mut self) {
         //TODO: panic이든 뭐든 무조건 종료(정리) 실행
-        (&mut self.event_loop)
+        self.event_loop
             .consume()
             .run(move |event, _, control_flow| match event {
                 winit::event::Event::WindowEvent { event, .. } => match event {
