@@ -130,7 +130,6 @@ impl Renderer {
     }
 
     fn create_instance(entry: &ash::Entry) -> ash::Instance {
-        //
         let layer_names = [CString::new("VK_LAYER_KHRONOS_validation").unwrap()];
         let layer_names_raw: Vec<*const i8> = layer_names
             .iter()
@@ -148,14 +147,11 @@ impl Renderer {
             .iter()
             .map(|raw_name| raw_name.as_ptr())
             .collect();
-        //
 
-        //
         let instance_create_info = vk::InstanceCreateInfo::builder()
             .enabled_layer_names(&layer_names_raw)
             .enabled_extension_names(&instance_extension_names_raw)
             .build();
-        //
 
         unsafe {
             entry
@@ -1406,7 +1402,7 @@ impl Renderer {
     }
 
     pub fn render(&mut self) {
-        let (swapchain_image_index, _is_suboptimal) = unsafe {
+        let (swapchain_image_index, _) = unsafe {
             self.swapchain_loader
                 .acquire_next_image(
                     self.swapchain,

@@ -1,7 +1,7 @@
 mod application;
 pub use application::*;
 
-pub mod graphics {
+/*pub mod graphics {
     pub mod elements {
         mod material;
         pub use material::*;
@@ -20,7 +20,7 @@ pub mod math {
 
     mod matrix;
     pub use matrix::*;
-}
+}*/
 
 pub mod utils {
     mod macros;
