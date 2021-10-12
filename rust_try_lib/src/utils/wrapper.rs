@@ -8,12 +8,12 @@ mod once {
             Self(Some(item))
         }
 
-        pub fn consume_check(&mut self) -> Result<T, bool> {
+        /*pub fn consume_check(&mut self) -> Result<T, bool> {
             match self.0.take() {
                 Some(item) => Ok(item),
                 None => Err(false),
             }
-        }
+        }*/
 
         pub fn consume(&mut self) -> T {
             match self.0.take() {
@@ -28,36 +28,30 @@ pub use once::*;
 mod lazy {
     ///This class assumes that value has ever initialized before using it.
     ///I know this is bad practice, so I left it as only for crate.
-    pub(crate) struct LazyManual<T> {
-        item: Option<T>,
-        initialized: bool,
-    }
+    pub(crate) struct LazyManual<T>(Option<T>);
 
     impl<T> LazyManual<T> {
         pub fn new() -> Self {
-            Self {
-                item: None,
-                initialized: false,
-            }
+            Self(None)
         }
 
         ///initializes value
         ///does nothing when value has already initialized
         pub fn init(&mut self, item: T) {
-            if !self.initialized {
-                self.item = Some(item);
+            if let None = self.0 {
+                self.0 = Some(item);
             }
         }
 
         pub fn get(&self) -> &T {
-            match self.item {
+            match self.0 {
                 None => unreachable!("It has never initialized"),
                 Some(ref item) => item,
             }
         }
 
         pub fn get_mut(&mut self) -> &mut T {
-            match self.item {
+            match self.0 {
                 None => unreachable!("It has never initialized"),
                 Some(ref mut item) => item,
             }
