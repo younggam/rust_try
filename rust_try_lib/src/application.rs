@@ -4,8 +4,6 @@ use std::ffi::CString;
 
 use ash::vk;
 
-use raw_window_handle::HasRawWindowHandle;
-
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 

@@ -3,7 +3,7 @@ use std::ffi::CString;
 use ash::vk;
 
 use crate::graphics::elements::*;
-use crate::utils::offset_of;
+use crate::offset_of;
 
 const SWAPCHIAN_IMAGE_COUNT: usize = 2;
 const IMAGE_AVAILABLE_INDEX: usize = 0;

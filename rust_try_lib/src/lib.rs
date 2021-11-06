@@ -1,5 +1,19 @@
-mod application;
-pub use application::*;
+/*!
+##Directory Structure
+Each directory(folder) shouldn't have it's own contents.
+All the contents should from leafs(file).
+But in use, contents can be accessed by real directory paths.
+*/
+
+///To keep the DRY when adding leaf modules
+macro_rules! leaf_mod{
+    {$visibility:vis $identifier:ident}=>{
+        mod $identifier;
+        $visibility use $identifier::*;
+    }
+}
+
+leaf_mod! {pub application}
 
 /*pub mod graphics {
     pub mod elements {
@@ -23,9 +37,6 @@ pub mod math {
 }*/
 
 pub mod utils {
-    mod macros;
-    pub(crate) use macros::*;
-
-    mod wrapper;
-    pub use wrapper::*;
+    leaf_mod! {pub macros}
+    leaf_mod! {pub wrapper}
 }

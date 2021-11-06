@@ -1,3 +1,4 @@
+#[macro_export]
 macro_rules! offset_of {
     ($base:path, $field:ident) => {{
         unsafe {
@@ -6,4 +7,3 @@ macro_rules! offset_of {
         }
     }};
 }
-pub(crate) use offset_of;

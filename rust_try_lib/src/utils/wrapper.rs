@@ -1,7 +1,6 @@
 mod once {
     ///This class assumes that value won't be used more than twice except reference.
-    ///I know this is bad practice, so I left it as only for crate.
-    pub(crate) struct Once<T>(Option<T>);
+    pub struct Once<T>(Option<T>);
 
     impl<T> Once<T> {
         pub fn new(item: T) -> Self {
@@ -27,8 +26,7 @@ pub use once::*;
 
 mod lazy {
     ///This class assumes that value has ever initialized before using it.
-    ///I know this is bad practice, so I left it as only for crate.
-    pub(crate) struct LazyManual<T>(Option<T>);
+    pub struct LazyManual<T>(Option<T>);
 
     impl<T> LazyManual<T> {
         pub fn new() -> Self {
