@@ -14,6 +14,7 @@ mod once {
             }
         }*/
 
+        ///Assumes value has never used, and takes ownership of value.
         pub fn consume(&mut self) -> T {
             match self.0.take() {
                 Some(item) => item,
@@ -33,14 +34,16 @@ mod lazy {
             Self(None)
         }
 
-        ///initializes value
-        ///does nothing when value has already initialized
+        /**initializes value
+
+        does nothing when value has already initialized*/
         pub fn init(&mut self, item: T) {
             if let None = self.0 {
                 self.0 = Some(item);
             }
         }
 
+        ///Assumes that value has initialized before use.
         pub fn get(&self) -> &T {
             match self.0 {
                 None => unreachable!("It has never initialized"),
@@ -48,6 +51,7 @@ mod lazy {
             }
         }
 
+        ///Same as get
         pub fn get_mut(&mut self) -> &mut T {
             match self.0 {
                 None => unreachable!("It has never initialized"),

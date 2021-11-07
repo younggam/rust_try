@@ -1,11 +1,13 @@
 /*!
-##Directory Structure
+## Directory Structure
 Each directory(folder) shouldn't have it's own contents.
+
 All the contents should from leafs(file).
+
 But in use, contents can be accessed by real directory paths.
 */
 
-///To keep the DRY when adding leaf modules
+//To keep the DRY when adding leaf modules
 macro_rules! leaf_mod{
     {$visibility:vis $identifier:ident}=>{
         mod $identifier;
@@ -17,23 +19,16 @@ leaf_mod! {pub application}
 
 /*pub mod graphics {
     pub mod elements {
-        mod material;
-        pub use material::*;
-
-        mod vertex;
-        pub use vertex::*;
+        leaf_mod! {pub material}
+        leaf_mod! {pub vertex}
     }
 
-    mod renderer;
-    pub use renderer::*;
+    leaf_mod! {pub renderer}
 }
 
 pub mod math {
-    mod vector;
-    pub use vector::*;
-
-    mod matrix;
-    pub use matrix::*;
+    leaf_mod! {pub vector}
+    leaf_mod! {pub matrix}
 }*/
 
 pub mod utils {
