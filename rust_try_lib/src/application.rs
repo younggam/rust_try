@@ -13,6 +13,16 @@ const VALIDATION_LAYERS: [&[u8]; 1] = [b"VK_LAYER_KHRONOS_validation"];
 
 const ENABLE_VALIDATION_LAYERS: bool = cfg!(debug_assertions);
 
+struct QueueFamilyIndices {
+    graphics_family: Option<u32>,
+}
+
+impl QueueFamilyIndices {
+    fn is_complete(&self) -> bool {
+        self.graphics_family.is_some()
+    }
+}
+
 lazy_struct! {
 /**Temporary struct(possibly permanent) that manages whole application.
 
@@ -20,6 +30,8 @@ Following Vulkan Tutorial.*/
     //2021.11.07
     pub struct Application {
         entry: ash::Entry,
+
+        physical_device: vk::PhysicalDevice,
         ;
         event_loop: utils::Once<winit::event_loop::EventLoop<()>>,
         window: winit::window::Window,
@@ -36,6 +48,8 @@ impl Application {
         lazy_construct! {
             Self {
                 entry: unsafe { ash::Entry::new().unwrap() },
+
+                physical_device: vk::PhysicalDevice::null(),
                 ;
                 event_loop,
                 window,
@@ -72,6 +86,7 @@ impl Application {
     fn init_vulkan(&mut self) {
         self.create_instance();
         self.setup_debug_messenger();
+        self.pick_physical_device();
     }
 
     fn main_loop(mut self) {
@@ -158,6 +173,57 @@ impl Application {
                     .unwrap(),
             );
         }
+    }
+
+    fn pick_physical_device(&mut self) {
+        let devices = unsafe { self.instance.enumerate_physical_devices() }.unwrap();
+
+        if devices.is_empty() {
+            panic!("failed to find GPUs with Vulkan support!");
+        }
+
+        for device in devices {
+            if self.is_device_suitable(device) {
+                self.physical_device = device;
+                break;
+            }
+        }
+
+        if self.physical_device == vk::PhysicalDevice::null() {
+            panic!("failed to find a suitable GPU!");
+        }
+    }
+
+    fn is_device_suitable(&self, device: vk::PhysicalDevice) -> bool {
+        let indices = self.find_queue_families(device);
+
+        indices.is_complete()
+    }
+
+    fn find_queue_families(&self, device: vk::PhysicalDevice) -> QueueFamilyIndices {
+        let mut indices = QueueFamilyIndices {
+            graphics_family: None,
+        };
+
+        let queue_families = unsafe {
+            self.instance
+                .get_physical_device_queue_family_properties(device)
+        };
+
+        let mut i = 0u32;
+        for queue_family in queue_families {
+            if queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
+                indices.graphics_family = Some(i);
+            }
+
+            if indices.is_complete() {
+                break;
+            }
+
+            i += 1;
+        }
+
+        indices
     }
 
     fn get_required_extensions(&self) -> Vec<*const c_char> {
