@@ -31,15 +31,15 @@ Following Vulkan Tutorial.*/
     pub struct Application {
         entry: ash::Entry,
 
-        physical_device: vk::PhysicalDevice,
-        ;
-        event_loop: utils::Once<winit::event_loop::EventLoop<()>>,
-        window: winit::window::Window,
+        -event_loop: utils::Once<winit::event_loop::EventLoop<()>>,
+        -window: winit::window::Window,
 
-        instance: ash::Instance,
+        -instance: ash::Instance,
 
-        debug_utils: ash::extensions::ext::DebugUtils,
+        -debug_utils: ash::extensions::ext::DebugUtils,
         debug_messenger: vk::DebugUtilsMessengerEXT,
+
+        physical_device: vk::PhysicalDevice,
     }
 }
 
@@ -49,15 +49,15 @@ impl Application {
             Self {
                 entry: unsafe { ash::Entry::new().unwrap() },
 
-                physical_device: vk::PhysicalDevice::null(),
-                ;
                 event_loop,
                 window,
 
                 instance,
 
                 debug_utils,
-                debug_messenger,
+                debug_messenger: vk::DebugUtilsMessengerEXT::null(),
+
+                physical_device: vk::PhysicalDevice::null(),
             }
         }
     }
@@ -167,11 +167,10 @@ impl Application {
 
         let create_info = Self::populate_debug_messenger_create_info();
         unsafe {
-            self.debug_messenger.init(
-                self.debug_utils
-                    .create_debug_utils_messenger(&create_info, None)
-                    .unwrap(),
-            );
+            self.debug_messenger = self
+                .debug_utils
+                .create_debug_utils_messenger(&create_info, None)
+                .unwrap();
         }
     }
 
@@ -284,7 +283,7 @@ impl Drop for Application {
             println!("Dropping..");
             if ENABLE_VALIDATION_LAYERS {
                 self.debug_utils
-                    .destroy_debug_utils_messenger(*self.debug_messenger, None);
+                    .destroy_debug_utils_messenger(self.debug_messenger, None);
             }
             self.instance.destroy_instance(None);
         }

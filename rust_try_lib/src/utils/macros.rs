@@ -12,32 +12,61 @@ macro_rules! offset_of {
 #[macro_export]
 macro_rules! lazy_struct{
     {
-        #[$outer:meta]
-        $vis_struct:vis struct $custom:ident {
-            $($v:vis $i:ident: $t:ty),+ $(,)?;
-            $($vis_field:vis $identifier:ident: $type:ty),* $(,)?
+        $(#[$outer:meta])?
+        $v0:vis struct $i0:ident {
+            $($v1:vis $i1:ident: $t1:ty,)*
+            $(
+                -$v2:vis $i2:ident: $t2:ty,
+                $($v3:vis $i3:ident: $t3:ty,)*
+            )+
         }
     }=>{
-        #[$outer]
-        $vis_struct struct $custom{
-            $($v $i: $t),+,
-            $($vis_field $identifier: $crate::utils::LazyManual<$type>),*
+        $(#[$outer])?
+        $v0 struct $i0{
+            $($v1 $i1: $t1,)*
+            $(
+                $v2 $i2: $crate::utils::LazyManual<$t2>,
+                $($v3 $i3: $t3,)*
+            )+
         }
     }
+}
+
+#[macro_export]
+macro_rules! macro_branch_expr{
+    {$t:tt, $e:expr}=>{$t};
+    {, $e:expr}=>{$e};
 }
 
 ///Same as lazy_struct
 #[macro_export]
 macro_rules! lazy_construct{
     {
-        $self:ident {
-            $($i:ident: $($e:expr)?),+ $(,)?;
-            $($identifier:ident),* $(,)?
+        $i0:ident {
+            // $($i1:ident: $e1:expr,)*
+            // $(
+            //     $i2:ident,
+            //     $($i3:ident: $e3:expr,)*
+            // )+
+
+            $(
+                $i1:ident $(:$e1:expr)?,
+            )+
         }
     }=>{
-        $self {
-            $($i: $($e)?),+,
-            $($identifier: $crate::utils::LazyManual::new()),*
+        $i0 {
+            // $($i1: $e1,)*
+            // $(
+            //     $i2: $crate::utils::LazyManual::new(),
+            //     $($i3: $e3,)*
+            // )+
+
+            $(
+                $i1: macro_branch_expr!{$($e1)?, $crate::utils::LazyManual::new()},
+            )+
         }
-    }
+    };
+    //inner macro. hopefully
+    ($e:expr)=>{$e};
+    ()=>{$crate::utils::LazyManual::new()};
 }
