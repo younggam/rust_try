@@ -11,6 +11,8 @@ const HEIGHT: u32 = 600;
 
 const VALIDATION_LAYERS: [&[u8]; 1] = [b"VK_LAYER_KHRONOS_validation"];
 
+const DEVICE_EXTENSIONS: [fn() -> &'static CStr; 1] = [ash::extensions::khr::Swapchain::name];
+
 const ENABLE_VALIDATION_LAYERS: bool = cfg!(debug_assertions);
 
 struct QueueFamilyIndices {
@@ -275,7 +277,33 @@ impl Application {
     fn is_device_suitable(&self, device: vk::PhysicalDevice) -> bool {
         let indices = self.find_queue_families(device);
 
-        indices.is_complete()
+        let extensions_supported = self.check_device_extension_support(device);
+
+        indices.is_complete() && extensions_supported
+    }
+
+    fn check_device_extension_support(&self, device: vk::PhysicalDevice) -> bool {
+        let available_extensions = unsafe {
+            self.instance
+                .enumerate_device_extension_properties(device)
+                .unwrap()
+        };
+
+        let mut result = true;
+
+        for required_extension in DEVICE_EXTENSIONS {
+            let required_extension = required_extension();
+            let mut temp = false;
+
+            for extension in available_extensions.iter() {
+                let extension_name =
+                    unsafe { CStr::from_ptr(&extension.extension_name as *const c_char) };
+                temp |= extension_name == required_extension;
+            }
+            result &= temp;
+        }
+
+        result
     }
 
     fn find_queue_families(&self, device: vk::PhysicalDevice) -> QueueFamilyIndices {
