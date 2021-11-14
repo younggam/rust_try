@@ -15,11 +15,20 @@ const ENABLE_VALIDATION_LAYERS: bool = cfg!(debug_assertions);
 
 struct QueueFamilyIndices {
     graphics_family: Option<u32>,
+    present_family: Option<u32>,
 }
 
 impl QueueFamilyIndices {
     fn is_complete(&self) -> bool {
-        self.graphics_family.is_some()
+        self.graphics_family.is_some() && self.present_family.is_some()
+    }
+
+    fn graphics_family(&self) -> u32 {
+        self.graphics_family.clone().unwrap()
+    }
+
+    fn present_family(&self) -> u32 {
+        self.present_family.clone().unwrap()
     }
 }
 
@@ -35,11 +44,16 @@ Following Vulkan Tutorial.*/
         -window: winit::window::Window,
 
         -instance: ash::Instance,
-
-        -debug_utils: ash::extensions::ext::DebugUtils,
+        -debug_utils_loader: ash::extensions::ext::DebugUtils,
         debug_messenger: vk::DebugUtilsMessengerEXT,
+        -surface_loader: ash::extensions::khr::Surface,
+        surface: vk::SurfaceKHR,
 
         physical_device: vk::PhysicalDevice,
+        -device: ash::Device,
+
+        graphics_queue: vk::Queue,
+        present_queue: vk::Queue,
     }
 }
 
@@ -53,11 +67,16 @@ impl Application {
                 window,
 
                 instance,
-
-                debug_utils,
+                debug_utils_loader,
                 debug_messenger: vk::DebugUtilsMessengerEXT::null(),
+                surface_loader,
+                surface: vk::SurfaceKHR::null(),
 
                 physical_device: vk::PhysicalDevice::null(),
+                device,
+
+                graphics_queue: vk::Queue::null(),
+                present_queue: vk::Queue::null(),
             }
         }
     }
@@ -86,7 +105,9 @@ impl Application {
     fn init_vulkan(&mut self) {
         self.create_instance();
         self.setup_debug_messenger();
+        self.create_surface();
         self.pick_physical_device();
+        self.create_logical_device();
     }
 
     fn main_loop(mut self) {
@@ -147,8 +168,10 @@ impl Application {
     fn populate_debug_messenger_create_info() -> vk::DebugUtilsMessengerCreateInfoEXT {
         vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .message_severity(
+                // vk::DebugUtilsMessageSeverityFlagsEXT::all()
+                //     ^ vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
                 vk::DebugUtilsMessageSeverityFlagsEXT::all()
-                    ^ vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
+                    ^ vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
             )
             .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
             .pfn_user_callback(Some(Self::debug_callback))
@@ -160,22 +183,34 @@ impl Application {
             return;
         }
 
-        self.debug_utils.init(ash::extensions::ext::DebugUtils::new(
-            &self.entry,
-            &self.instance,
-        ));
+        self.debug_utils_loader
+            .init(ash::extensions::ext::DebugUtils::new(
+                &self.entry,
+                &self.instance,
+            ));
 
         let create_info = Self::populate_debug_messenger_create_info();
         unsafe {
             self.debug_messenger = self
-                .debug_utils
+                .debug_utils_loader
                 .create_debug_utils_messenger(&create_info, None)
                 .unwrap();
         }
     }
 
+    fn create_surface(&mut self) {
+        self.surface_loader.init(ash::extensions::khr::Surface::new(
+            &self.entry,
+            &self.instance,
+        ));
+        self.surface = unsafe {
+            ash_window::create_surface(&self.entry, &self.instance, self.window.get(), None)
+                .expect("failed to create window surface!")
+        };
+    }
+
     fn pick_physical_device(&mut self) {
-        let devices = unsafe { self.instance.enumerate_physical_devices() }.unwrap();
+        let devices = unsafe { self.instance.enumerate_physical_devices().unwrap() };
 
         if devices.is_empty() {
             panic!("failed to find GPUs with Vulkan support!");
@@ -193,6 +228,50 @@ impl Application {
         }
     }
 
+    fn create_logical_device(&mut self) {
+        let indices = self.find_queue_families(self.physical_device);
+
+        let mut queue_create_infos = Vec::<vk::DeviceQueueCreateInfo>::new();
+        let unique_queue_families = [indices.graphics_family(), indices.present_family()];
+
+        let queue_priority = [1.0f32];
+        let mut previous: Option<u32> = None;
+        for queue_family in unique_queue_families {
+            if previous.is_some() && previous == Some(queue_family) {
+                continue;
+            }
+            let queue_create_info = vk::DeviceQueueCreateInfo::builder()
+                .queue_family_index(queue_family)
+                .queue_priorities(&queue_priority)
+                .build();
+            queue_create_infos.push(queue_create_info);
+            previous = Some(queue_family);
+        }
+
+        let device_features: vk::PhysicalDeviceFeatures = Default::default();
+
+        let mut create_info = vk::DeviceCreateInfo::builder()
+            .queue_create_infos(&queue_create_infos)
+            .enabled_features(&device_features);
+
+        let raw_layer_names = VALIDATION_LAYERS
+            .iter()
+            .map(|layer_name| layer_name.as_ptr() as *const c_char)
+            .collect::<Vec<_>>();
+        if ENABLE_VALIDATION_LAYERS {
+            create_info = create_info.enabled_layer_names(&raw_layer_names);
+        }
+
+        self.device.init(unsafe {
+            self.instance
+                .create_device(self.physical_device, &create_info, None)
+                .expect("failed to create logical device!")
+        });
+
+        self.graphics_queue = unsafe { self.device.get_device_queue(indices.graphics_family(), 0) };
+        self.present_queue = unsafe { self.device.get_device_queue(indices.present_family(), 0) };
+    }
+
     fn is_device_suitable(&self, device: vk::PhysicalDevice) -> bool {
         let indices = self.find_queue_families(device);
 
@@ -202,6 +281,7 @@ impl Application {
     fn find_queue_families(&self, device: vk::PhysicalDevice) -> QueueFamilyIndices {
         let mut indices = QueueFamilyIndices {
             graphics_family: None,
+            present_family: None,
         };
 
         let queue_families = unsafe {
@@ -213,6 +293,16 @@ impl Application {
         for queue_family in queue_families {
             if queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
                 indices.graphics_family = Some(i);
+            }
+
+            if indices.graphics_family.is_some()
+                && unsafe {
+                    self.surface_loader
+                        .get_physical_device_surface_support(device, i, self.surface)
+                        .unwrap()
+                }
+            {
+                indices.present_family = Some(i);
             }
 
             if indices.is_complete() {
@@ -281,10 +371,12 @@ impl Drop for Application {
     fn drop(&mut self) {
         unsafe {
             println!("Dropping..");
+            self.device.destroy_device(None);
             if ENABLE_VALIDATION_LAYERS {
-                self.debug_utils
+                self.debug_utils_loader
                     .destroy_debug_utils_messenger(self.debug_messenger, None);
             }
+            self.surface_loader.destroy_surface(self.surface, None);
             self.instance.destroy_instance(None);
         }
     }

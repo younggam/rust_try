@@ -32,6 +32,7 @@ macro_rules! lazy_struct{
     }
 }
 
+///for using ? repition as kinda conditional expression.
 #[macro_export]
 macro_rules! macro_branch_expr{
     {$t:tt, $e:expr}=>{$t};
@@ -43,30 +44,15 @@ macro_rules! macro_branch_expr{
 macro_rules! lazy_construct{
     {
         $i0:ident {
-            // $($i1:ident: $e1:expr,)*
-            // $(
-            //     $i2:ident,
-            //     $($i3:ident: $e3:expr,)*
-            // )+
-
             $(
                 $i1:ident $(:$e1:expr)?,
             )+
         }
     }=>{
         $i0 {
-            // $($i1: $e1,)*
-            // $(
-            //     $i2: $crate::utils::LazyManual::new(),
-            //     $($i3: $e3,)*
-            // )+
-
             $(
                 $i1: macro_branch_expr!{$($e1)?, $crate::utils::LazyManual::new()},
             )+
         }
     };
-    //inner macro. hopefully
-    ($e:expr)=>{$e};
-    ()=>{$crate::utils::LazyManual::new()};
 }
