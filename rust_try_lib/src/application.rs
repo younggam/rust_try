@@ -6,8 +6,7 @@ use std::os::raw::c_char;
 use ash::vk;
 
 //Window surface size.
-const WIDTH: u32 = 800;
-const HEIGHT: u32 = 600;
+const WINDOW_SIZE: winit::dpi::LogicalSize<u32> = winit::dpi::LogicalSize::new(800, 600);
 
 const VALIDATION_LAYERS: [&[u8]; 1] = [b"VK_LAYER_KHRONOS_validation"];
 
@@ -34,6 +33,12 @@ impl QueueFamilyIndices {
     }
 }
 
+struct SwapChainSupportDetails {
+    capabilities: vk::SurfaceCapabilitiesKHR,
+    formats: Vec<vk::SurfaceFormatKHR>,
+    present_modes: Vec<vk::PresentModeKHR>,
+}
+
 lazy_struct! {
 /**Temporary struct(possibly permanent) that manages whole application.
 
@@ -56,6 +61,8 @@ Following Vulkan Tutorial.*/
 
         graphics_queue: vk::Queue,
         present_queue: vk::Queue,
+
+        //-swap_chain_loader::ash::extensions::khr::Swapchain
     }
 }
 
@@ -95,7 +102,7 @@ impl Application {
         self.window.init(
             winit::window::WindowBuilder::new()
                 .with_title("Vulkan")
-                .with_inner_size(winit::dpi::LogicalSize::new(WIDTH, HEIGHT))
+                .with_inner_size(WINDOW_SIZE)
                 .with_resizable(false)
                 .build(&event_loop)
                 .unwrap(),
@@ -239,6 +246,7 @@ impl Application {
         let queue_priority = [1.0f32];
         let mut previous: Option<u32> = None;
         for queue_family in unique_queue_families {
+            //tutorial 꺼 validation오류 발생으로 인한 수정. 만약 present, graphics queue familes 가 겹치면 스킵
             if previous.is_some() && previous == Some(queue_family) {
                 continue;
             }
@@ -252,9 +260,14 @@ impl Application {
 
         let device_features: vk::PhysicalDeviceFeatures = Default::default();
 
+        let device_extensions = DEVICE_EXTENSIONS
+            .iter()
+            .map(|extension| extension().as_ptr())
+            .collect::<Vec<_>>();
         let mut create_info = vk::DeviceCreateInfo::builder()
             .queue_create_infos(&queue_create_infos)
-            .enabled_features(&device_features);
+            .enabled_features(&device_features)
+            .enabled_extension_names(&device_extensions);
 
         let raw_layer_names = VALIDATION_LAYERS
             .iter()
@@ -274,12 +287,88 @@ impl Application {
         self.present_queue = unsafe { self.device.get_device_queue(indices.present_family(), 0) };
     }
 
+    fn choose_swap_surface_format(
+        available_formats: &Vec<vk::SurfaceFormatKHR>,
+    ) -> vk::SurfaceFormatKHR {
+        for available_format in available_formats {
+            if available_format.format == vk::Format::B8G8R8A8_SRGB
+                && available_format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
+            {
+                return *available_format;
+            }
+        }
+        available_formats[0]
+    }
+
+    fn choose_swap_present_mode(
+        available_present_modes: &Vec<vk::PresentModeKHR>,
+    ) -> vk::PresentModeKHR {
+        for available_present_mode in available_present_modes {
+            if *available_present_mode == vk::PresentModeKHR::MAILBOX {
+                return *available_present_mode;
+            }
+        }
+        return vk::PresentModeKHR::FIFO;
+    }
+
+    fn choose_swap_extent(&self, capabilities: &vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
+        if capabilities.current_extent.width != u32::MAX {
+            return capabilities.current_extent;
+        } else {
+            //same as glfwGetFrameBufferSize
+            let physical_size = WINDOW_SIZE.to_physical(self.window.scale_factor());
+
+            let actual_extent = vk::Extent2D {
+                width: physical_size.width,
+                height: physical_size.height,
+            };
+
+            actual_extent.width.clamp(
+                capabilities.min_image_extent.width,
+                capabilities.max_image_extent.width,
+            );
+            actual_extent.height.clamp(
+                capabilities.min_image_extent.height,
+                capabilities.max_image_extent.height,
+            );
+
+            return actual_extent;
+        }
+    }
+
+    fn query_swap_chain_support(&self, device: vk::PhysicalDevice) -> SwapChainSupportDetails {
+        SwapChainSupportDetails {
+            capabilities: unsafe {
+                self.surface_loader
+                    .get_physical_device_surface_capabilities(device, self.surface)
+                    .unwrap()
+            },
+            formats: unsafe {
+                self.surface_loader
+                    .get_physical_device_surface_formats(device, self.surface)
+                    .unwrap()
+            },
+            present_modes: unsafe {
+                self.surface_loader
+                    .get_physical_device_surface_present_modes(device, self.surface)
+                    .unwrap()
+            },
+        }
+    }
+
     fn is_device_suitable(&self, device: vk::PhysicalDevice) -> bool {
         let indices = self.find_queue_families(device);
 
         let extensions_supported = self.check_device_extension_support(device);
 
-        indices.is_complete() && extensions_supported
+        let mut swap_chain_adequate = false;
+        if extensions_supported {
+            let swap_chain_support = self.query_swap_chain_support(device);
+            swap_chain_adequate = !swap_chain_support.formats.is_empty()
+                && !swap_chain_support.present_modes.is_empty();
+        }
+
+        indices.is_complete() && extensions_supported && swap_chain_adequate
     }
 
     fn check_device_extension_support(&self, device: vk::PhysicalDevice) -> bool {
