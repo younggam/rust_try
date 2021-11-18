@@ -69,6 +69,8 @@ Following Vulkan Tutorial.*/
         swapchain_image_format: vk::Format,
         swapchain_extent: vk::Extent2D,
         swapchain_image_views: Vec<vk::ImageView>,
+
+        pipeline_layout: vk::PipelineLayout,
     }
 }
 
@@ -99,6 +101,8 @@ impl Application {
                 swapchain_image_format: vk::Format::default(),
                 swapchain_extent: vk::Extent2D::default(),
                 swapchain_image_views: Vec::<vk::ImageView>::new(),
+
+                pipeline_layout: vk::PipelineLayout::null(),
             }
         }
     }
@@ -387,7 +391,7 @@ impl Application {
         }
     }
 
-    fn create_graphics_pipeline(&self) {
+    fn create_graphics_pipeline(&mut self) {
         let vert_shader_code = include_bytes!("../../assets/shaders/vert.spv");
         let frag_shader_code = include_bytes!("../../assets/shaders/frag.spv");
 
@@ -406,6 +410,45 @@ impl Application {
             .name(&entry_point_name);
 
         let shader_stages = [vert_shader_stage_info, frag_shader_stage_info];
+
+        let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder();
+
+        let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::builder()
+            .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+
+        let viewport = vk::Viewport::builder()
+            .width(self.swapchain_extent.width as f32)
+            .height(self.swapchain_extent.height as f32)
+            .max_depth(1.0f32);
+
+        let scissor = vk::Rect2D::builder().extent(self.swapchain_extent);
+
+        let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
+            .viewports(&[*viewport])
+            .scissors(&[*scissor]);
+
+        let rasterizer = vk::PipelineRasterizationStateCreateInfo::builder()
+            .polygon_mode(vk::PolygonMode::FILL)
+            .line_width(1.0f32)
+            .cull_mode(vk::CullModeFlags::BACK)
+            .front_face(vk::FrontFace::CLOCKWISE);
+
+        let multisampling = vk::PipelineMultisampleStateCreateInfo::builder()
+            .rasterization_samples(vk::SampleCountFlags::TYPE_1);
+
+        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::builder()
+            .color_write_mask(vk::ColorComponentFlags::all());
+
+        let color_blending =
+            vk::PipelineColorBlendStateCreateInfo::builder().attachments(&[*color_blend_attachment]);
+
+        let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder();
+
+        self.pipeline_layout = unsafe {
+            self.device
+                .create_pipeline_layout(&pipeline_layout_info, None)
+                .expect("failed to create pipeline layout!")
+        };
 
         unsafe {
             self.device.destroy_shader_module(vert_shader_module, None);
@@ -627,6 +670,9 @@ impl Drop for Application {
     fn drop(&mut self) {
         unsafe {
             println!("Dropping..");
+            self.device
+                .destroy_pipeline_layout(self.pipeline_layout, None);
+
             for image_view in self.swapchain_image_views.iter() {
                 self.device.destroy_image_view(*image_view, None);
             }
