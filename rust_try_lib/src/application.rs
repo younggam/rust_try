@@ -70,6 +70,7 @@ Following Vulkan Tutorial.*/
         swapchain_extent: vk::Extent2D,
         swapchain_image_views: Vec<vk::ImageView>,
 
+        render_pass: vk::RenderPass,
         pipeline_layout: vk::PipelineLayout,
     }
 }
@@ -102,6 +103,7 @@ impl Application {
                 swapchain_extent: vk::Extent2D::default(),
                 swapchain_image_views: Vec::<vk::ImageView>::new(),
 
+                render_pass: vk::RenderPass::null(),
                 pipeline_layout: vk::PipelineLayout::null(),
             }
         }
@@ -136,6 +138,7 @@ impl Application {
         self.create_logical_device();
         self.create_swapchain();
         self.create_image_views();
+        self.create_render_pass();
         self.create_graphics_pipeline();
     }
 
@@ -391,6 +394,39 @@ impl Application {
         }
     }
 
+    fn create_render_pass(&mut self) {
+        let color_attachment = [vk::AttachmentDescription::builder()
+            .format(self.swapchain_image_format)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+            .build()];
+
+        let color_attachment_ref = [vk::AttachmentReference {
+            attachment: 0,
+            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        }];
+
+        let subpass = [vk::SubpassDescription::builder()
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+            .color_attachments(&color_attachment_ref)
+            .build()];
+
+        let render_pass_info = vk::RenderPassCreateInfo::builder()
+            .attachments(&color_attachment)
+            .subpasses(&subpass);
+
+        self.render_pass = unsafe {
+            self.device
+                .create_render_pass(&render_pass_info, None)
+                .expect("failed to create render pass!")
+        };
+    }
+
     fn create_graphics_pipeline(&mut self) {
         let vert_shader_code = include_bytes!("../../assets/shaders/vert.spv");
         let frag_shader_code = include_bytes!("../../assets/shaders/frag.spv");
@@ -416,16 +452,17 @@ impl Application {
         let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
 
-        let viewport = vk::Viewport::builder()
+        let viewport = [vk::Viewport::builder()
             .width(self.swapchain_extent.width as f32)
             .height(self.swapchain_extent.height as f32)
-            .max_depth(1.0f32);
+            .max_depth(1.0f32)
+            .build()];
 
-        let scissor = vk::Rect2D::builder().extent(self.swapchain_extent);
+        let scissor = [vk::Rect2D::builder().extent(self.swapchain_extent).build()];
 
         let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
-            .viewports(&[*viewport])
-            .scissors(&[*scissor]);
+            .viewports(&viewport)
+            .scissors(&scissor);
 
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::builder()
             .polygon_mode(vk::PolygonMode::FILL)
@@ -436,11 +473,12 @@ impl Application {
         let multisampling = vk::PipelineMultisampleStateCreateInfo::builder()
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
-        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::builder()
-            .color_write_mask(vk::ColorComponentFlags::all());
+        let color_blend_attachment = [vk::PipelineColorBlendAttachmentState::builder()
+            .color_write_mask(vk::ColorComponentFlags::all())
+            .build()];
 
         let color_blending =
-            vk::PipelineColorBlendStateCreateInfo::builder().attachments(&[*color_blend_attachment]);
+            vk::PipelineColorBlendStateCreateInfo::builder().attachments(&color_blend_attachment);
 
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder();
 
@@ -672,6 +710,7 @@ impl Drop for Application {
             println!("Dropping..");
             self.device
                 .destroy_pipeline_layout(self.pipeline_layout, None);
+            self.device.destroy_render_pass(self.render_pass, None);
 
             for image_view in self.swapchain_image_views.iter() {
                 self.device.destroy_image_view(*image_view, None);
