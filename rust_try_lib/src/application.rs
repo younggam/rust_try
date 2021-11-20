@@ -9,6 +9,8 @@ use ash::vk;
 //Window surface size.
 const WINDOW_SIZE: winit::dpi::LogicalSize<u32> = winit::dpi::LogicalSize::new(800, 600);
 
+const MAX_FRAMES_IN_FLIGHT: usize = 2;
+
 const VALIDATION_LAYERS: [&[u8]; 1] = [b"VK_LAYER_KHRONOS_validation"];
 
 const DEVICE_EXTENSIONS: [fn() -> &'static CStr; 1] = [ash::extensions::khr::Swapchain::name];
@@ -50,6 +52,7 @@ Following Vulkan Tutorial.*/
 
         -event_loop: utils::Once<winit::event_loop::EventLoop<()>>,
         -window: winit::window::Window,
+        is_minimized: bool,
 
         -instance: ash::Instance,
         -debug_utils_loader: ash::extensions::ext::DebugUtils,
@@ -69,9 +72,22 @@ Following Vulkan Tutorial.*/
         swapchain_image_format: vk::Format,
         swapchain_extent: vk::Extent2D,
         swapchain_image_views: Vec<vk::ImageView>,
+        swapchain_framebuffers: Vec<vk::Framebuffer>,
 
         render_pass: vk::RenderPass,
         pipeline_layout: vk::PipelineLayout,
+        graphics_pipeline: vk::Pipeline,
+
+        command_pool: vk::CommandPool,
+        command_buffers: Vec<vk::CommandBuffer>,
+
+        image_available_semaphores: Vec<vk::Semaphore>,
+        render_finished_semaphores: Vec<vk::Semaphore>,
+        in_flight_fences: Vec<vk::Fence>,
+        images_in_flight: Vec<vk::Fence>,
+        current_frame: usize,
+
+        framebuffer_resized: bool,
     }
 }
 
@@ -83,6 +99,7 @@ impl Application {
 
                 event_loop,
                 window,
+                is_minimized: false,
 
                 instance,
                 debug_utils_loader,
@@ -102,9 +119,22 @@ impl Application {
                 swapchain_image_format: vk::Format::default(),
                 swapchain_extent: vk::Extent2D::default(),
                 swapchain_image_views: Vec::<vk::ImageView>::new(),
+                swapchain_framebuffers: Vec::<vk::Framebuffer>::new(),
 
                 render_pass: vk::RenderPass::null(),
                 pipeline_layout: vk::PipelineLayout::null(),
+                graphics_pipeline: vk::Pipeline::null(),
+
+                command_pool: vk::CommandPool::null(),
+                command_buffers: Vec::<vk::CommandBuffer>::new(),
+
+                image_available_semaphores: Vec::<vk::Semaphore>::new(),
+                render_finished_semaphores: Vec::<vk::Semaphore>::new(),
+                in_flight_fences: Vec::<vk::Fence>::new(),
+                images_in_flight: Vec::<vk::Fence>::new(),
+                current_frame: 0,
+
+                framebuffer_resized: false,
             }
         }
     }
@@ -122,12 +152,16 @@ impl Application {
             winit::window::WindowBuilder::new()
                 .with_title("Vulkan")
                 .with_inner_size(WINDOW_SIZE)
-                .with_resizable(false)
+                .with_resizable(true)
                 .build(&event_loop)
                 .unwrap(),
         );
 
         self.event_loop.init(utils::Once::new(event_loop));
+    }
+
+    pub fn framebuffer_resize_callback(&mut self) {
+        self.framebuffer_resized = true;
     }
 
     fn init_vulkan(&mut self) {
@@ -140,22 +174,84 @@ impl Application {
         self.create_image_views();
         self.create_render_pass();
         self.create_graphics_pipeline();
+        self.create_framebuffers();
+        self.create_command_pool();
+        self.create_command_buffers();
+        self.create_sync_objects();
     }
 
     fn main_loop(mut self) {
         //TODO: panic이든 뭐든 무조건 종료(정리) 실행
         self.event_loop
             .consume()
-            .run(move |event, _, control_flow| match event {
-                winit::event::Event::WindowEvent { event, .. } => match event {
-                    winit::event::WindowEvent::CloseRequested => {
-                        *control_flow = winit::event_loop::ControlFlow::Exit;
-                        let _ = &self;
+            .run(move |event, _, control_flow| {
+                //소유권 가져오기
+                //let _ = &self;
+
+                match event {
+                    winit::event::Event::MainEventsCleared => self.draw_frame(),
+                    winit::event::Event::WindowEvent { event, .. } => match event {
+                        winit::event::WindowEvent::Resized(_) => self.framebuffer_resize_callback(),
+                        winit::event::WindowEvent::CloseRequested => {
+                            *control_flow = winit::event_loop::ControlFlow::Exit;
+                        }
+                        _ => {}
+                    },
+                    winit::event::Event::LoopDestroyed => {
+                        unsafe {
+                            self.device.device_wait_idle().unwrap();
+                        }
+                        println!("shut down!");
                     }
                     _ => {}
-                },
-                _ => {}
+                }
             });
+    }
+
+    fn cleanup_swapchain(&mut self) {
+        unsafe {
+            for framebuffer in self.swapchain_framebuffers.drain(..) {
+                self.device.destroy_framebuffer(framebuffer, None);
+            }
+
+            self.device
+                .free_command_buffers(self.command_pool, &self.command_buffers);
+
+            self.device.destroy_pipeline(self.graphics_pipeline, None);
+            self.device
+                .destroy_pipeline_layout(self.pipeline_layout, None);
+            self.device.destroy_render_pass(self.render_pass, None);
+
+            for swapchain_image_view in self.swapchain_image_views.drain(..) {
+                self.device.destroy_image_view(swapchain_image_view, None);
+            }
+
+            self.swapchain_loader
+                .destroy_swapchain(self.swapchain, None);
+        }
+    }
+
+    fn recreate_swapchain(&mut self) {
+        let framebuffer_size = self.window.inner_size();
+        self.is_minimized = framebuffer_size.width == 0 || framebuffer_size.height == 0;
+        if self.is_minimized {
+            return;
+        }
+
+        unsafe {
+            self.device.device_wait_idle().unwrap();
+        }
+
+        self.cleanup_swapchain();
+
+        self.create_swapchain();
+        self.create_image_views();
+        self.create_render_pass();
+        self.create_graphics_pipeline();
+        self.create_framebuffers();
+        self.create_command_buffers();
+
+        self.framebuffer_resized = false;
     }
 
     fn create_instance(&mut self) {
@@ -281,7 +377,7 @@ impl Application {
             previous = Some(queue_family);
         }
 
-        let device_features: vk::PhysicalDeviceFeatures = Default::default();
+        let device_features = vk::PhysicalDeviceFeatures::builder();
 
         let device_extensions = DEVICE_EXTENSIONS
             .iter()
@@ -416,9 +512,19 @@ impl Application {
             .color_attachments(&color_attachment_ref)
             .build()];
 
+        let dependency = [vk::SubpassDependency::builder()
+            .src_subpass(vk::SUBPASS_EXTERNAL)
+            .dst_subpass(0)
+            .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+            .build()];
+
         let render_pass_info = vk::RenderPassCreateInfo::builder()
             .attachments(&color_attachment)
-            .subpasses(&subpass);
+            .subpasses(&subpass)
+            .dependencies(&dependency);
 
         self.render_pass = unsafe {
             self.device
@@ -445,7 +551,7 @@ impl Application {
             .module(frag_shader_module)
             .name(&entry_point_name);
 
-        let shader_stages = [vert_shader_stage_info, frag_shader_stage_info];
+        let shader_stages = [*vert_shader_stage_info, *frag_shader_stage_info];
 
         let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder();
 
@@ -488,10 +594,241 @@ impl Application {
                 .expect("failed to create pipeline layout!")
         };
 
+        let pipeline_info = [vk::GraphicsPipelineCreateInfo::builder()
+            .stages(&shader_stages)
+            .vertex_input_state(&vertex_input_info)
+            .input_assembly_state(&input_assembly)
+            .viewport_state(&viewport_state)
+            .rasterization_state(&rasterizer)
+            .multisample_state(&multisampling)
+            .color_blend_state(&color_blending)
+            .layout(self.pipeline_layout)
+            .render_pass(self.render_pass)
+            .subpass(0)
+            .build()];
+
+        self.graphics_pipeline = unsafe {
+            self.device
+                .create_graphics_pipelines(vk::PipelineCache::null(), &pipeline_info, None)
+                .expect("failed to create graphics pipeline!")[0]
+        };
+
         unsafe {
             self.device.destroy_shader_module(vert_shader_module, None);
             self.device.destroy_shader_module(frag_shader_module, None);
         }
+    }
+
+    fn create_framebuffers(&mut self) {
+        for swapchain_image_view in self.swapchain_image_views.iter() {
+            let swapchain_image_view = [*swapchain_image_view];
+
+            let framebuffer_info = vk::FramebufferCreateInfo::builder()
+                .render_pass(self.render_pass)
+                .attachments(&swapchain_image_view)
+                .width(self.swapchain_extent.width)
+                .height(self.swapchain_extent.height)
+                .layers(1);
+
+            self.swapchain_framebuffers.push(unsafe {
+                self.device
+                    .create_framebuffer(&framebuffer_info, None)
+                    .expect("failed to create framebuffer!")
+            });
+        }
+    }
+
+    fn create_command_pool(&mut self) {
+        let queue_family_indices = self.find_queue_families(self.physical_device);
+
+        let pool_info = vk::CommandPoolCreateInfo::builder()
+            .queue_family_index(queue_family_indices.graphics_family());
+
+        self.command_pool = unsafe {
+            self.device
+                .create_command_pool(&pool_info, None)
+                .expect("failed to create command pool!")
+        };
+    }
+
+    fn create_command_buffers(&mut self) {
+        let aclloc_info = vk::CommandBufferAllocateInfo::builder()
+            .command_pool(self.command_pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(self.swapchain_framebuffers.len() as u32);
+
+        self.command_buffers = unsafe {
+            self.device
+                .allocate_command_buffers(&aclloc_info)
+                .expect("failed to allocate command buffers!")
+        };
+
+        for i in 0..self.command_buffers.len() {
+            let begin_info = vk::CommandBufferBeginInfo::builder();
+
+            unsafe {
+                self.device
+                    .begin_command_buffer(self.command_buffers[i], &begin_info)
+                    .expect("failed to begin recording command buffer!");
+            }
+
+            let mut render_pass_info = vk::RenderPassBeginInfo::builder()
+                .render_pass(self.render_pass)
+                .framebuffer(self.swapchain_framebuffers[i])
+                .render_area(vk::Rect2D {
+                    extent: self.swapchain_extent,
+                    ..Default::default()
+                });
+
+            let clear_color = [vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 1.0],
+                },
+            }];
+            render_pass_info = render_pass_info.clear_values(&clear_color);
+
+            unsafe {
+                self.device.cmd_begin_render_pass(
+                    self.command_buffers[i],
+                    &render_pass_info,
+                    vk::SubpassContents::INLINE,
+                );
+
+                self.device.cmd_bind_pipeline(
+                    self.command_buffers[i],
+                    vk::PipelineBindPoint::GRAPHICS,
+                    self.graphics_pipeline,
+                );
+
+                self.device.cmd_draw(self.command_buffers[i], 3, 1, 0, 0);
+
+                self.device.cmd_end_render_pass(self.command_buffers[i]);
+
+                self.device
+                    .end_command_buffer(self.command_buffers[i])
+                    .expect("failed to record command buffer!");
+            }
+        }
+    }
+
+    fn create_sync_objects(&mut self) {
+        self.images_in_flight
+            .resize(self.swapchain_images.len(), vk::Fence::null());
+
+        let semaphore_info = vk::SemaphoreCreateInfo::default();
+
+        let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+
+        for _ in 0..MAX_FRAMES_IN_FLIGHT {
+            //and_then chain for one expect
+            unsafe { self.device.create_semaphore(&semaphore_info, None) }
+                .and_then(|x| {
+                    self.image_available_semaphores.push(x);
+                    unsafe { self.device.create_semaphore(&semaphore_info, None) }
+                })
+                .and_then(|x| {
+                    self.render_finished_semaphores.push(x);
+                    unsafe { self.device.create_fence(&fence_info, None) }
+                })
+                .and_then(|x| {
+                    self.in_flight_fences.push(x);
+                    Ok(vk::Fence::null())
+                })
+                .expect("failed to create synchronization objects for a frame!");
+        }
+    }
+
+    fn draw_frame(&mut self) {
+        if self.is_minimized {
+            self.recreate_swapchain();
+            return;
+        }
+
+        unsafe {
+            self.device
+                .wait_for_fences(&[self.in_flight_fences[self.current_frame]], true, u64::MAX)
+                .unwrap();
+        }
+
+        let image_index = match unsafe {
+            self.swapchain_loader.acquire_next_image(
+                self.swapchain,
+                u64::MAX,
+                self.image_available_semaphores[self.current_frame],
+                vk::Fence::null(),
+            )
+        } {
+            Ok((image_index, _)) => image_index as usize,
+            Err(e) => match e {
+                vk::Result::ERROR_OUT_OF_DATE_KHR => {
+                    self.recreate_swapchain();
+                    return;
+                }
+                _ => panic!("failed to acquire swap chain image! : {:#?}", e),
+            },
+        };
+
+        if self.images_in_flight[image_index] != vk::Fence::null() {
+            unsafe {
+                self.device
+                    .wait_for_fences(&[self.images_in_flight[image_index]], true, u64::MAX)
+                    .unwrap();
+            }
+        }
+        self.images_in_flight[image_index] = self.in_flight_fences[self.current_frame];
+
+        let mut submit_info = vk::SubmitInfo::builder();
+
+        let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
+        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+        submit_info = submit_info
+            .wait_semaphores(&wait_semaphores)
+            .wait_dst_stage_mask(&wait_stages)
+            .command_buffers(&self.command_buffers[image_index..=image_index]);
+
+        let signal_semaphores = [self.render_finished_semaphores[self.current_frame]];
+        let submit_info = submit_info.signal_semaphores(&signal_semaphores);
+
+        unsafe {
+            self.device
+                .reset_fences(&[self.in_flight_fences[self.current_frame]])
+                .unwrap();
+
+            self.device
+                .queue_submit(
+                    self.graphics_queue,
+                    &[*submit_info],
+                    self.in_flight_fences[self.current_frame],
+                )
+                .expect("failed to submit draw commmand buffer!");
+        }
+
+        let mut present_info = vk::PresentInfoKHR::builder().wait_semaphores(&signal_semaphores);
+
+        let swapchains = [self.swapchain];
+        let image_indices = [image_index as u32];
+        present_info = present_info
+            .swapchains(&swapchains)
+            .image_indices(&image_indices);
+
+        let mut error = false;
+        match unsafe {
+            self.swapchain_loader
+                .queue_present(self.graphics_queue, &present_info)
+        } {
+            Ok(sub_optimal) => error |= sub_optimal,
+            Err(e) => match e {
+                vk::Result::ERROR_OUT_OF_DATE_KHR => {
+                    error = true;
+                }
+                _ => panic!("failed to acquire swap chain image! : {:#?}", e),
+            },
+        };
+        if error || self.framebuffer_resized {
+            self.recreate_swapchain();
+        }
+
+        self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
     fn create_shader_module(&self, code: &[u8]) -> vk::ShaderModule {
@@ -536,7 +873,7 @@ impl Application {
             return capabilities.current_extent;
         } else {
             //same as glfwGetFrameBufferSize
-            let physical_size = WINDOW_SIZE.to_physical(self.window.scale_factor());
+            let physical_size = self.window.inner_size();
 
             let mut actual_extent = vk::Extent2D {
                 width: physical_size.width,
@@ -696,7 +1033,7 @@ impl Application {
         _p_user_data: *mut c_void,
     ) -> vk::Bool32 {
         println!(
-            "Validation layer: {:?}",
+            "Validation layer: {:?}\n",
             CStr::from_ptr((*p_callback_data).p_message)
         );
         false as vk::Bool32
@@ -706,18 +1043,21 @@ impl Application {
 impl Drop for Application {
     ///Using this same as `cleanup`
     fn drop(&mut self) {
-        unsafe {
-            println!("Dropping..");
-            self.device
-                .destroy_pipeline_layout(self.pipeline_layout, None);
-            self.device.destroy_render_pass(self.render_pass, None);
+        println!("Dropping..");
+        self.cleanup_swapchain();
 
-            for image_view in self.swapchain_image_views.iter() {
-                self.device.destroy_image_view(*image_view, None);
+        unsafe {
+            for _ in 0..MAX_FRAMES_IN_FLIGHT {
+                self.device
+                    .destroy_semaphore(self.render_finished_semaphores.swap_remove(0), None);
+                self.device
+                    .destroy_semaphore(self.image_available_semaphores.swap_remove(0), None);
+                self.device
+                    .destroy_fence(self.in_flight_fences.swap_remove(0), None);
             }
 
-            self.swapchain_loader
-                .destroy_swapchain(self.swapchain, None);
+            self.device.destroy_command_pool(self.command_pool, None);
+
             self.device.destroy_device(None);
 
             if ENABLE_VALIDATION_LAYERS {
