@@ -1,3 +1,5 @@
+use crate::graphics::elements::Vertex;
+use crate::math::vector::*;
 use crate::*;
 
 use std::ffi::{c_void, CStr, CString};
@@ -42,6 +44,12 @@ struct SwapChainSupportDetails {
     present_modes: Vec<vk::PresentModeKHR>,
 }
 
+const VERTICES: [Vertex; 3] = [
+    Vertex::new(Vec2::new(0.0, -0.5), Vec3::UNIT_X),
+    Vertex::new(Vec2::new(0.5, 0.5), Vec3::UNIT_Y),
+    Vertex::new(Vec2::new(-0.5, 0.5), Vec3::UNIT_Z),
+];
+
 lazy_struct! {
 /**Temporary struct(possibly permanent) that manages whole application.
 
@@ -52,7 +60,6 @@ Following Vulkan Tutorial.*/
 
         -event_loop: utils::Once<winit::event_loop::EventLoop<()>>,
         -window: winit::window::Window,
-        is_minimized: bool,
 
         -instance: ash::Instance,
         -debug_utils_loader: ash::extensions::ext::DebugUtils,
@@ -99,7 +106,6 @@ impl Application {
 
                 event_loop,
                 window,
-                is_minimized: false,
 
                 instance,
                 debug_utils_loader,
@@ -232,12 +238,6 @@ impl Application {
     }
 
     fn recreate_swapchain(&mut self) {
-        let framebuffer_size = self.window.inner_size();
-        self.is_minimized = framebuffer_size.width == 0 || framebuffer_size.height == 0;
-        if self.is_minimized {
-            return;
-        }
-
         unsafe {
             self.device.device_wait_idle().unwrap();
         }
@@ -553,7 +553,14 @@ impl Application {
 
         let shader_stages = [*vert_shader_stage_info, *frag_shader_stage_info];
 
-        let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder();
+        let mut vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder();
+
+        let binding_description = [Vertex::get_binding_description()];
+        let attribute_descriptions = Vertex::get_attribute_descriptions();
+
+        vertex_input_info = vertex_input_info
+            .vertex_binding_descriptions(&binding_description)
+            .vertex_attribute_descriptions(&attribute_descriptions);
 
         let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
@@ -739,8 +746,8 @@ impl Application {
     }
 
     fn draw_frame(&mut self) {
-        if self.is_minimized {
-            self.recreate_swapchain();
+        let framebuffer_size = self.window.inner_size();
+        if framebuffer_size.width == 0 || framebuffer_size.height == 0 {
             return;
         }
 

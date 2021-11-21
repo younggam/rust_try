@@ -1,26 +1,43 @@
+use crate::math::vector::*;
+use crate::*;
+
+use ash::vk;
+
 #[derive(Clone, Debug, Copy)]
 pub struct Vertex {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub r: f32,
-    pub g: f32,
-    pub b: f32,
-    pub u: f32,
-    pub v: f32,
+    pub pos: Vec2,
+    pub color: Vec3,
 }
 
 impl Vertex {
-    pub fn new(x: f32, y: f32, z: f32, r: f32, g: f32, b: f32, u: f32, v: f32) -> Self {
-        Self {
-            x,
-            y,
-            z,
-            r,
-            g,
-            b,
-            u,
-            v,
+    pub const fn new(pos: Vec2, color: Vec3) -> Self {
+        Self { pos, color }
+    }
+
+    #[cfg(feature = "ash")]
+    pub fn get_binding_description() -> vk::VertexInputBindingDescription {
+        vk::VertexInputBindingDescription {
+            binding: 0,
+            stride: std::mem::size_of::<Self>() as u32,
+            input_rate: vk::VertexInputRate::VERTEX,
         }
+    }
+
+    #[cfg(feature = "ash")]
+    pub fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 2] {
+        [
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 0,
+                format: vk::Format::R32G32_SFLOAT,
+                offset: offset_of!(Self, pos) as u32,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 1,
+                format: vk::Format::R32G32B32_SFLOAT,
+                offset: offset_of!(Self, color) as u32,
+            },
+        ]
     }
 }

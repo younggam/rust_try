@@ -1,3 +1,4 @@
+#[derive(Clone, Debug, Copy)]
 pub struct Vec2 {
     pub x: f32,
     pub y: f32,
@@ -12,6 +13,7 @@ impl Vec2 {
     }
 }
 
+#[derive(Clone, Debug, Copy)]
 pub struct Vec3 {
     pub x: f32,
     pub y: f32,
@@ -28,6 +30,7 @@ impl Vec3 {
     }
 }
 
+#[derive(Clone, Debug, Copy)]
 pub struct Vec4 {
     pub x: f32,
     pub y: f32,
