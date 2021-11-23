@@ -86,6 +86,10 @@ Following Vulkan Tutorial.*/
         graphics_pipeline: vk::Pipeline,
 
         command_pool: vk::CommandPool,
+
+        vertex_buffer: vk::Buffer,
+        vertex_buffer_memory: vk::DeviceMemory,
+
         command_buffers: Vec<vk::CommandBuffer>,
 
         image_available_semaphores: Vec<vk::Semaphore>,
@@ -132,6 +136,10 @@ impl Application {
                 graphics_pipeline: vk::Pipeline::null(),
 
                 command_pool: vk::CommandPool::null(),
+
+                vertex_buffer: vk::Buffer::null(),
+                vertex_buffer_memory: vk::DeviceMemory::null(),
+
                 command_buffers: Vec::<vk::CommandBuffer>::new(),
 
                 image_available_semaphores: Vec::<vk::Semaphore>::new(),
@@ -182,6 +190,7 @@ impl Application {
         self.create_graphics_pipeline();
         self.create_framebuffers();
         self.create_command_pool();
+        self.create_vertex_buffer();
         self.create_command_buffers();
         self.create_sync_objects();
     }
@@ -658,15 +667,86 @@ impl Application {
         };
     }
 
+    fn create_vertex_buffer(&mut self) {
+        let buffer_info = vk::BufferCreateInfo::builder()
+            .size(std::mem::size_of_val(&VERTICES[0]) as u64 * 3)
+            .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+        self.vertex_buffer = unsafe {
+            self.device
+                .create_buffer(&buffer_info, None)
+                .expect("failed to create vertex buffer!")
+        };
+
+        let mem_requirements = unsafe {
+            self.device
+                .get_buffer_memory_requirements(self.vertex_buffer)
+        };
+
+        let alloc_info = vk::MemoryAllocateInfo::builder()
+            .allocation_size(mem_requirements.size)
+            .memory_type_index(self.find_memory_type(
+                mem_requirements.memory_type_bits,
+                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            ));
+
+        self.vertex_buffer_memory = unsafe {
+            self.device
+                .allocate_memory(&alloc_info, None)
+                .expect("failed to allocate vertex buffer memory!")
+        };
+
+        unsafe {
+            self.device
+                .bind_buffer_memory(self.vertex_buffer, self.vertex_buffer_memory, 0)
+                .unwrap();
+
+            let data = self
+                .device
+                .map_memory(
+                    self.vertex_buffer_memory,
+                    0,
+                    (&buffer_info).size,
+                    vk::MemoryMapFlags::empty(),
+                )
+                .unwrap();
+            std::ptr::copy_nonoverlapping(
+                &VERTICES[0] as *const Vertex,
+                data as *mut Vertex,
+                VERTICES.len(),
+            );
+        }
+    }
+
+    fn find_memory_type(&self, type_filter: u32, properties: vk::MemoryPropertyFlags) -> u32 {
+        let mem_properties = unsafe {
+            self.instance
+                .get_physical_device_memory_properties(self.physical_device)
+        };
+
+        for i in 0..mem_properties.memory_type_count {
+            if (type_filter & (1 << i)) > 0
+                && (mem_properties.memory_types[i as usize]
+                    .property_flags
+                    .contains(properties))
+            {
+                return i;
+            }
+        }
+
+        panic!("failed to find suitable memory type!");
+    }
+
     fn create_command_buffers(&mut self) {
-        let aclloc_info = vk::CommandBufferAllocateInfo::builder()
+        let alloc_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.command_pool)
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(self.swapchain_framebuffers.len() as u32);
 
         self.command_buffers = unsafe {
             self.device
-                .allocate_command_buffers(&aclloc_info)
+                .allocate_command_buffers(&alloc_info)
                 .expect("failed to allocate command buffers!")
         };
 
@@ -707,7 +787,17 @@ impl Application {
                     self.graphics_pipeline,
                 );
 
-                self.device.cmd_draw(self.command_buffers[i], 3, 1, 0, 0);
+                let vertex_buffers = [self.vertex_buffer];
+                let offsets: [vk::DeviceSize; 1] = [0];
+                self.device.cmd_bind_vertex_buffers(
+                    self.command_buffers[i],
+                    0,
+                    &vertex_buffers,
+                    &offsets,
+                );
+
+                self.device
+                    .cmd_draw(self.command_buffers[i], VERTICES.len() as u32, 1, 0, 0);
 
                 self.device.cmd_end_render_pass(self.command_buffers[i]);
 
@@ -1054,6 +1144,9 @@ impl Drop for Application {
         self.cleanup_swapchain();
 
         unsafe {
+            self.device.destroy_buffer(self.vertex_buffer, None);
+            self.device.free_memory(self.vertex_buffer_memory, None);
+
             for _ in 0..MAX_FRAMES_IN_FLIGHT {
                 self.device
                     .destroy_semaphore(self.render_finished_semaphores.swap_remove(0), None);
