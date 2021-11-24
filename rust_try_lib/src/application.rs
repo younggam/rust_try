@@ -668,46 +668,21 @@ impl Application {
     }
 
     fn create_vertex_buffer(&mut self) {
-        let buffer_info = vk::BufferCreateInfo::builder()
-            .size(std::mem::size_of_val(&VERTICES[0]) as u64 * 3)
-            .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+        let buffer_size = std::mem::size_of_val(&VERTICES[0]) as u64 * 3;
 
-        self.vertex_buffer = unsafe {
-            self.device
-                .create_buffer(&buffer_info, None)
-                .expect("failed to create vertex buffer!")
-        };
-
-        let mem_requirements = unsafe {
-            self.device
-                .get_buffer_memory_requirements(self.vertex_buffer)
-        };
-
-        let alloc_info = vk::MemoryAllocateInfo::builder()
-            .allocation_size(mem_requirements.size)
-            .memory_type_index(self.find_memory_type(
-                mem_requirements.memory_type_bits,
-                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-            ));
-
-        self.vertex_buffer_memory = unsafe {
-            self.device
-                .allocate_memory(&alloc_info, None)
-                .expect("failed to allocate vertex buffer memory!")
-        };
+        let (staging_buffer, staging_buffer_memory) = self.create_buffer(
+            buffer_size,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
 
         unsafe {
-            self.device
-                .bind_buffer_memory(self.vertex_buffer, self.vertex_buffer_memory, 0)
-                .unwrap();
-
             let data = self
                 .device
                 .map_memory(
-                    self.vertex_buffer_memory,
+                    staging_buffer_memory,
                     0,
-                    (&buffer_info).size,
+                    buffer_size,
                     vk::MemoryMapFlags::empty(),
                 )
                 .unwrap();
@@ -716,6 +691,104 @@ impl Application {
                 data as *mut Vertex,
                 VERTICES.len(),
             );
+            self.device.unmap_memory(staging_buffer_memory);
+        }
+
+        let (buffer, buffer_memory) = self.create_buffer(
+            buffer_size,
+            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        );
+        self.vertex_buffer = buffer;
+        self.vertex_buffer_memory = buffer_memory;
+
+        self.copy_buffer(staging_buffer, self.vertex_buffer, buffer_size);
+
+        unsafe {
+            self.device.destroy_buffer(staging_buffer, None);
+            self.device.free_memory(staging_buffer_memory, None);
+        }
+    }
+
+    fn create_buffer(
+        &self,
+        size: vk::DeviceSize,
+        usage: vk::BufferUsageFlags,
+        properties: vk::MemoryPropertyFlags,
+    ) -> (vk::Buffer, vk::DeviceMemory) {
+        let buffer_info = vk::BufferCreateInfo::builder()
+            .size(size)
+            .usage(usage)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+        let buffer = unsafe {
+            self.device
+                .create_buffer(&buffer_info, None)
+                .expect("failed to create buffer!")
+        };
+
+        let mem_requirements = unsafe { self.device.get_buffer_memory_requirements(buffer) };
+
+        let alloc_info = vk::MemoryAllocateInfo::builder()
+            .allocation_size(mem_requirements.size)
+            .memory_type_index(
+                self.find_memory_type(mem_requirements.memory_type_bits, properties),
+            );
+
+        let buffer_memory = unsafe {
+            self.device
+                .allocate_memory(&alloc_info, None)
+                .expect("failed to allocate buffer memory!")
+        };
+
+        unsafe {
+            self.device
+                .bind_buffer_memory(buffer, buffer_memory, 0)
+                .unwrap();
+        }
+
+        (buffer, buffer_memory)
+    }
+
+    fn copy_buffer(&self, src_buffer: vk::Buffer, dst_buffer: vk::Buffer, size: vk::DeviceSize) {
+        let alloc_info = vk::CommandBufferAllocateInfo::builder()
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_pool(self.command_pool)
+            .command_buffer_count(1);
+
+        let command_buffer = unsafe { self.device.allocate_command_buffers(&alloc_info).unwrap() };
+
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+        unsafe {
+            self.device
+                .begin_command_buffer(command_buffer[0], &begin_info)
+                .unwrap();
+        }
+
+        let copy_region = vk::BufferCopy {
+            src_offset: 0,
+            dst_offset: 0,
+            size,
+        };
+        unsafe {
+            self.device
+                .cmd_copy_buffer(command_buffer[0], src_buffer, dst_buffer, &[copy_region]);
+
+            self.device.end_command_buffer(command_buffer[0]).unwrap();
+        }
+
+        let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffer);
+
+        unsafe {
+            self.device
+                .queue_submit(self.graphics_queue, &[*submit_info], vk::Fence::null())
+                .unwrap();
+            self.device.queue_wait_idle(self.graphics_queue).unwrap();
+
+            self.device
+                .free_command_buffers(self.command_pool, &command_buffer);
         }
     }
 
