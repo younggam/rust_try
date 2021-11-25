@@ -10,7 +10,7 @@ But in use, contents can be accessed by real directory paths.
 //To keep the DRY when adding leaf modules
 macro_rules! leaf_mod{
     {$visibility:vis $identifier:ident}=>{
-        $visibility mod $identifier;
+        mod $identifier;
         $visibility use $identifier::*;
     }
 }

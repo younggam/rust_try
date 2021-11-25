@@ -1,5 +1,5 @@
 use crate::graphics::elements::Vertex;
-use crate::math::vector::*;
+use crate::math::*;
 use crate::*;
 
 use std::ffi::{c_void, CStr, CString};
@@ -44,11 +44,21 @@ struct SwapChainSupportDetails {
     present_modes: Vec<vk::PresentModeKHR>,
 }
 
-const VERTICES: [Vertex; 3] = [
-    Vertex::new(Vec2::new(0.0, -0.5), Vec3::UNIT_X),
-    Vertex::new(Vec2::new(0.5, 0.5), Vec3::UNIT_Y),
-    Vertex::new(Vec2::new(-0.5, 0.5), Vec3::UNIT_Z),
+#[derive(Clone, Default, Copy)]
+struct UniformBufferObject {
+    model: Mat4,
+    view: Mat4,
+    proj: Mat4,
+}
+
+const VERTICES: [Vertex; 4] = [
+    Vertex::new(Vec2::new(-0.5, -0.5), Vec3::UNIT_X),
+    Vertex::new(Vec2::new(0.5, -0.5), Vec3::UNIT_Y),
+    Vertex::new(Vec2::new(0.5, 0.5), Vec3::UNIT_Z),
+    Vertex::new(Vec2::new(-0.5, 0.5), Vec3::new(1.0, 1.0, 1.0)),
 ];
+
+const INDICES: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
 lazy_struct! {
 /**Temporary struct(possibly permanent) that manages whole application.
@@ -57,6 +67,7 @@ Following Vulkan Tutorial.*/
     //2021.11.07
     pub struct Application {
         entry: ash::Entry,
+        start_time: std::time::Instant,
 
         -event_loop: utils::Once<winit::event_loop::EventLoop<()>>,
         -window: winit::window::Window,
@@ -82,6 +93,7 @@ Following Vulkan Tutorial.*/
         swapchain_framebuffers: Vec<vk::Framebuffer>,
 
         render_pass: vk::RenderPass,
+        descriptor_set_layout: vk::DescriptorSetLayout,
         pipeline_layout: vk::PipelineLayout,
         graphics_pipeline: vk::Pipeline,
 
@@ -89,6 +101,11 @@ Following Vulkan Tutorial.*/
 
         vertex_buffer: vk::Buffer,
         vertex_buffer_memory: vk::DeviceMemory,
+        index_buffer: vk::Buffer,
+        index_buffer_memory: vk::DeviceMemory,
+
+        uniform_buffers:Vec<vk::Buffer>,
+        uniform_buffers_memory:Vec<vk::DeviceMemory>,
 
         command_buffers: Vec<vk::CommandBuffer>,
 
@@ -107,6 +124,7 @@ impl Application {
         lazy_construct! {
             Self {
                 entry: unsafe { ash::Entry::new().unwrap() },
+                start_time: std::time::Instant::now(),
 
                 event_loop,
                 window,
@@ -132,6 +150,7 @@ impl Application {
                 swapchain_framebuffers: Vec::<vk::Framebuffer>::new(),
 
                 render_pass: vk::RenderPass::null(),
+                descriptor_set_layout: vk::DescriptorSetLayout::null(),
                 pipeline_layout: vk::PipelineLayout::null(),
                 graphics_pipeline: vk::Pipeline::null(),
 
@@ -139,6 +158,11 @@ impl Application {
 
                 vertex_buffer: vk::Buffer::null(),
                 vertex_buffer_memory: vk::DeviceMemory::null(),
+                index_buffer: vk::Buffer::null(),
+                index_buffer_memory: vk::DeviceMemory::null(),
+
+                uniform_buffers:Vec::<vk::Buffer>::new(),
+                uniform_buffers_memory:Vec::<vk::DeviceMemory>::new(),
 
                 command_buffers: Vec::<vk::CommandBuffer>::new(),
 
@@ -187,10 +211,13 @@ impl Application {
         self.create_swapchain();
         self.create_image_views();
         self.create_render_pass();
+        self.create_descriptor_set_layout();
         self.create_graphics_pipeline();
         self.create_framebuffers();
         self.create_command_pool();
         self.create_vertex_buffer();
+        self.create_index_buffer();
+        self.create_uniform_buffers();
         self.create_command_buffers();
         self.create_sync_objects();
     }
@@ -243,6 +270,13 @@ impl Application {
 
             self.swapchain_loader
                 .destroy_swapchain(self.swapchain, None);
+
+            for _ in 0..self.swapchain_images.len() {
+                self.device
+                    .destroy_buffer(self.uniform_buffers.swap_remove(0), None);
+                self.device
+                    .free_memory(self.uniform_buffers_memory.swap_remove(0), None);
+            }
         }
     }
 
@@ -258,6 +292,7 @@ impl Application {
         self.create_render_pass();
         self.create_graphics_pipeline();
         self.create_framebuffers();
+        self.create_uniform_buffers();
         self.create_command_buffers();
 
         self.framebuffer_resized = false;
@@ -542,6 +577,25 @@ impl Application {
         };
     }
 
+    fn create_descriptor_set_layout(&mut self) {
+        let ubo_layout_binding = [vk::DescriptorSetLayoutBinding {
+            binding: 0,
+            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 0,
+            stage_flags: vk::ShaderStageFlags::VERTEX,
+            p_immutable_samplers: std::ptr::null(),
+        }];
+
+        let layout_info =
+            vk::DescriptorSetLayoutCreateInfo::builder().bindings(&ubo_layout_binding);
+
+        self.descriptor_set_layout = unsafe {
+            self.device
+                .create_descriptor_set_layout(&layout_info, None)
+                .expect("failed to create descriptor set layout!")
+        };
+    }
+
     fn create_graphics_pipeline(&mut self) {
         let vert_shader_code = include_bytes!("../../assets/shaders/vert.spv");
         let frag_shader_code = include_bytes!("../../assets/shaders/frag.spv");
@@ -602,7 +656,9 @@ impl Application {
         let color_blending =
             vk::PipelineColorBlendStateCreateInfo::builder().attachments(&color_blend_attachment);
 
-        let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder();
+        let descriptor_set_layout = [self.descriptor_set_layout];
+        let pipeline_layout_info =
+            vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layout);
 
         self.pipeline_layout = unsafe {
             self.device
@@ -668,7 +724,7 @@ impl Application {
     }
 
     fn create_vertex_buffer(&mut self) {
-        let buffer_size = std::mem::size_of_val(&VERTICES[0]) as u64 * 3;
+        let buffer_size = (std::mem::size_of_val(&VERTICES[0]) * VERTICES.len()) as vk::DeviceSize;
 
         let (staging_buffer, staging_buffer_memory) = self.create_buffer(
             buffer_size,
@@ -707,6 +763,63 @@ impl Application {
         unsafe {
             self.device.destroy_buffer(staging_buffer, None);
             self.device.free_memory(staging_buffer_memory, None);
+        }
+    }
+
+    fn create_index_buffer(&mut self) {
+        let buffer_size = (std::mem::size_of_val(&INDICES[0]) * INDICES.len()) as vk::DeviceSize;
+
+        let (staging_buffer, staging_buffer_memory) = self.create_buffer(
+            buffer_size,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
+
+        unsafe {
+            let data = self
+                .device
+                .map_memory(
+                    staging_buffer_memory,
+                    0,
+                    buffer_size,
+                    vk::MemoryMapFlags::empty(),
+                )
+                .unwrap();
+            std::ptr::copy_nonoverlapping(
+                &INDICES[0] as *const u16,
+                data as *mut u16,
+                INDICES.len(),
+            );
+            self.device.unmap_memory(staging_buffer_memory);
+        }
+
+        let (buffer, buffer_memory) = self.create_buffer(
+            buffer_size,
+            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        );
+        self.index_buffer = buffer;
+        self.index_buffer_memory = buffer_memory;
+
+        self.copy_buffer(staging_buffer, self.index_buffer, buffer_size);
+
+        unsafe {
+            self.device.destroy_buffer(staging_buffer, None);
+            self.device.free_memory(staging_buffer_memory, None);
+        }
+    }
+
+    fn create_uniform_buffers(&mut self) {
+        let buffer_size = std::mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
+
+        for _ in 0..self.swapchain_images.len() {
+            let (buffer, buffer_memory) = self.create_buffer(
+                buffer_size,
+                vk::BufferUsageFlags::UNIFORM_BUFFER,
+                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            );
+            self.uniform_buffers.push(buffer);
+            self.uniform_buffers_memory.push(buffer_memory);
         }
     }
 
@@ -869,8 +982,21 @@ impl Application {
                     &offsets,
                 );
 
-                self.device
-                    .cmd_draw(self.command_buffers[i], VERTICES.len() as u32, 1, 0, 0);
+                self.device.cmd_bind_index_buffer(
+                    self.command_buffers[i],
+                    self.index_buffer,
+                    0,
+                    vk::IndexType::UINT16,
+                );
+
+                self.device.cmd_draw_indexed(
+                    self.command_buffers[i],
+                    INDICES.len() as u32,
+                    1,
+                    0,
+                    0,
+                    0,
+                );
 
                 self.device.cmd_end_render_pass(self.command_buffers[i]);
 
@@ -908,6 +1034,44 @@ impl Application {
         }
     }
 
+    fn update_uniform_buffer(&self, current_image: usize) {
+        let time = self.start_time.elapsed().as_secs_f32();
+
+        let mut ubo = UniformBufferObject::default();
+        ubo.model = Mat4::IDENTITY.rotate(time * 90f32.to_radians(), Vec3::UNIT_Z);
+        ubo.view = Mat4::look_at(
+            Vec3::new(2.0, 2.0, 2.0),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        );
+        ubo.proj = Mat4::perspective(
+            45f32.to_radians(),
+            self.swapchain_extent.width as f32 / self.swapchain_extent.height as f32,
+            0.1,
+            10.0,
+        );
+
+        let buffer_size = std::mem::size_of_val(&ubo) as vk::DeviceSize;
+        unsafe {
+            let data = self
+                .device
+                .map_memory(
+                    self.uniform_buffers_memory[current_image],
+                    0,
+                    buffer_size,
+                    vk::MemoryMapFlags::empty(),
+                )
+                .unwrap();
+            std::ptr::copy_nonoverlapping(
+                &ubo as *const UniformBufferObject,
+                data as *mut UniformBufferObject,
+                1,
+            );
+            self.device
+                .unmap_memory(self.uniform_buffers_memory[current_image]);
+        }
+    }
+
     fn draw_frame(&mut self) {
         let framebuffer_size = self.window.inner_size();
         if framebuffer_size.width == 0 || framebuffer_size.height == 0 {
@@ -937,6 +1101,8 @@ impl Application {
                 _ => panic!("failed to acquire swap chain image! : {:#?}", e),
             },
         };
+
+        self.update_uniform_buffer(image_index);
 
         if self.images_in_flight[image_index] != vk::Fence::null() {
             unsafe {
@@ -1217,6 +1383,12 @@ impl Drop for Application {
         self.cleanup_swapchain();
 
         unsafe {
+            self.device
+                .destroy_descriptor_set_layout(self.descriptor_set_layout, None);
+
+            self.device.destroy_buffer(self.index_buffer, None);
+            self.device.free_memory(self.index_buffer_memory, None);
+
             self.device.destroy_buffer(self.vertex_buffer, None);
             self.device.free_memory(self.vertex_buffer_memory, None);
 

@@ -1,4 +1,4 @@
-use crate::math::vector::*;
+use crate::math::*;
 use crate::*;
 
 use ash::vk;
