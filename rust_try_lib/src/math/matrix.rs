@@ -101,7 +101,7 @@ impl Mat3 {
         }
     }
 
-    pub fn trans(self, factor: Vec2) -> Self {
+    pub fn translate(self, factor: Vec2) -> Self {
         let mut trans_mat = Self::IDENTITY;
 
         trans_mat.c.x += factor.x;
@@ -210,7 +210,7 @@ impl Mat4 {
         }
     }
 
-    pub fn trans(self, factor: Vec3) -> Self {
+    pub fn translate(self, factor: Vec3) -> Self {
         let mut trans_mat = Self::IDENTITY;
 
         trans_mat.d.x += factor.x;
@@ -266,7 +266,7 @@ impl Mat4 {
         look_at_matrix.b.z = target_to_camera.y;
         look_at_matrix.c.z = target_to_camera.z;
 
-        look_at_matrix.trans(-camera)
+        look_at_matrix.translate(-camera)
     }
 
     pub fn perspective(fov_rad: f32, aspect: f32, near: f32, far: f32) -> Self {
