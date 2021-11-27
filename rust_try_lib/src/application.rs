@@ -45,10 +45,11 @@ struct SwapChainSupportDetails {
 }
 
 #[derive(Clone, Default, Copy)]
-struct UniformBufferObject {
-    model: Mat4,
-    view: Mat4,
-    proj: Mat4,
+#[repr(C)]
+pub struct UniformBufferObject {
+    pub model: Mat4,
+    pub view: Mat4,
+    pub proj: Mat4,
 }
 
 const VERTICES: [Vertex; 4] = [
@@ -104,8 +105,11 @@ Following Vulkan Tutorial.*/
         index_buffer: vk::Buffer,
         index_buffer_memory: vk::DeviceMemory,
 
-        uniform_buffers:Vec<vk::Buffer>,
-        uniform_buffers_memory:Vec<vk::DeviceMemory>,
+        uniform_buffers: Vec<vk::Buffer>,
+        uniform_buffers_memory: Vec<vk::DeviceMemory>,
+
+        descriptor_pool: vk::DescriptorPool,
+        descriptor_sets: Vec<vk::DescriptorSet>,
 
         command_buffers: Vec<vk::CommandBuffer>,
 
@@ -164,6 +168,9 @@ impl Application {
                 uniform_buffers:Vec::<vk::Buffer>::new(),
                 uniform_buffers_memory:Vec::<vk::DeviceMemory>::new(),
 
+                descriptor_pool: vk::DescriptorPool::null(),
+                descriptor_sets: Vec::<vk::DescriptorSet>::new(),
+
                 command_buffers: Vec::<vk::CommandBuffer>::new(),
 
                 image_available_semaphores: Vec::<vk::Semaphore>::new(),
@@ -218,6 +225,8 @@ impl Application {
         self.create_vertex_buffer();
         self.create_index_buffer();
         self.create_uniform_buffers();
+        self.create_descriptor_pool();
+        self.create_descriptor_sets();
         self.create_command_buffers();
         self.create_sync_objects();
     }
@@ -277,6 +286,9 @@ impl Application {
                 self.device
                     .free_memory(self.uniform_buffers_memory.swap_remove(0), None);
             }
+
+            self.device
+                .destroy_descriptor_pool(self.descriptor_pool, None);
         }
     }
 
@@ -293,6 +305,8 @@ impl Application {
         self.create_graphics_pipeline();
         self.create_framebuffers();
         self.create_uniform_buffers();
+        self.create_descriptor_pool();
+        self.create_descriptor_sets();
         self.create_command_buffers();
 
         self.framebuffer_resized = false;
@@ -581,7 +595,7 @@ impl Application {
         let ubo_layout_binding = [vk::DescriptorSetLayoutBinding {
             binding: 0,
             descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 0,
+            descriptor_count: 1,
             stage_flags: vk::ShaderStageFlags::VERTEX,
             p_immutable_samplers: std::ptr::null(),
         }];
@@ -644,7 +658,7 @@ impl Application {
             .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1.0f32)
             .cull_mode(vk::CullModeFlags::BACK)
-            .front_face(vk::FrontFace::CLOCKWISE);
+            .front_face(vk::FrontFace::COUNTER_CLOCKWISE);
 
         let multisampling = vk::PipelineMultisampleStateCreateInfo::builder()
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
@@ -823,6 +837,60 @@ impl Application {
         }
     }
 
+    fn create_descriptor_pool(&mut self) {
+        let pool_size = [vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::UNIFORM_BUFFER,
+            descriptor_count: self.swapchain_images.len() as u32,
+        }];
+
+        let pool_info = vk::DescriptorPoolCreateInfo::builder()
+            .pool_sizes(&pool_size)
+            .max_sets(self.swapchain_images.len() as u32);
+
+        self.descriptor_pool = unsafe {
+            self.device
+                .create_descriptor_pool(&pool_info, None)
+                .expect("failed to create descriptor pool!")
+        };
+    }
+
+    fn create_descriptor_sets(&mut self) {
+        let mut layouts = Vec::<vk::DescriptorSetLayout>::new();
+        layouts.resize(
+            self.swapchain_images.len() as usize,
+            self.descriptor_set_layout,
+        );
+        let alloc_info = vk::DescriptorSetAllocateInfo::builder()
+            .descriptor_pool(self.descriptor_pool)
+            .set_layouts(&layouts);
+
+        self.descriptor_sets = unsafe {
+            self.device
+                .allocate_descriptor_sets(&alloc_info)
+                .expect("failed to allocate descriptor sets!")
+        };
+
+        for i in 0..self.swapchain_images.len() as usize {
+            let buffer_info = [vk::DescriptorBufferInfo {
+                buffer: self.uniform_buffers[i],
+                offset: 0,
+                range: std::mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
+            }];
+
+            let descriptor_write = vk::WriteDescriptorSet::builder()
+                .dst_set(self.descriptor_sets[i])
+                .dst_binding(0)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .buffer_info(&buffer_info);
+
+            unsafe {
+                self.device
+                    .update_descriptor_sets(&[*descriptor_write], &[]);
+            }
+        }
+    }
+
     fn create_buffer(
         &self,
         size: vk::DeviceSize,
@@ -989,6 +1057,15 @@ impl Application {
                     vk::IndexType::UINT16,
                 );
 
+                self.device.cmd_bind_descriptor_sets(
+                    self.command_buffers[i],
+                    vk::PipelineBindPoint::GRAPHICS,
+                    self.pipeline_layout,
+                    0,
+                    &self.descriptor_sets[i..=i],
+                    &[],
+                );
+
                 self.device.cmd_draw_indexed(
                     self.command_buffers[i],
                     INDICES.len() as u32,
@@ -1037,19 +1114,20 @@ impl Application {
     fn update_uniform_buffer(&self, current_image: usize) {
         let time = self.start_time.elapsed().as_secs_f32();
 
-        let mut ubo = UniformBufferObject::default();
-        ubo.model = Mat4::IDENTITY.rotate(time * 90f32.to_radians(), Vec3::UNIT_Z);
-        ubo.view = Mat4::look_at(
-            Vec3::new(2.0, 2.0, 2.0),
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(0.0, 0.0, 1.0),
-        );
-        ubo.proj = Mat4::perspective(
-            45f32.to_radians(),
-            self.swapchain_extent.width as f32 / self.swapchain_extent.height as f32,
-            0.1,
-            10.0,
-        );
+        let ubo = UniformBufferObject {
+            model: Mat4::IDENTITY.rotate(time * 90f32.to_radians(), Vec3::UNIT_Z),
+            view: Mat4::look_at(
+                Vec3::new(2.0, 2.0, 2.0),
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(0.0, 0.0, 1.0),
+            ),
+            proj: Mat4::perspective(
+                45f32.to_radians(),
+                self.swapchain_extent.width as f32 / self.swapchain_extent.height as f32,
+                0.1,
+                10.0,
+            ),
+        };
 
         let buffer_size = std::mem::size_of_val(&ubo) as vk::DeviceSize;
         unsafe {

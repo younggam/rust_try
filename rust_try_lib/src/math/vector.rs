@@ -5,7 +5,8 @@ pub trait Vector {
     fn dot(self, other: Self) -> Self;
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Default)]
+#[repr(C, align(8))]
 pub struct Vec2 {
     pub x: f32,
     pub y: f32,
@@ -115,7 +116,8 @@ impl Div<f32> for Vec2 {
 
 //===========================
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Default)]
+#[repr(C, align(16))]
 pub struct Vec3 {
     pub x: f32,
     pub y: f32,
@@ -240,7 +242,8 @@ impl Div<f32> for Vec3 {
 
 //===========================
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Default)]
+#[repr(C, align(16))]
 pub struct Vec4 {
     pub x: f32,
     pub y: f32,

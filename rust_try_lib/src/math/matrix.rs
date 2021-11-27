@@ -1,8 +1,10 @@
+//TODO matrix trait and generic type
 use super::vector::*;
 
 use std::ops::{Add, AddAssign, Mul, MulAssign};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
+#[repr(C, align(16))]
 pub struct Mat2 {
     ///col1
     pub a: Vec2,
@@ -60,8 +62,10 @@ impl Mul<Vec2> for Mat2 {
 
 impl MulAssign for Mat2 {
     fn mul_assign(&mut self, other: Mat2) {
-        self.a = *self * other.a;
-        self.b = *self * other.b;
+        let a = *self * other.a;
+        let b = *self * other.b;
+        self.a = a;
+        self.b = b;
     }
 }
 
@@ -76,7 +80,8 @@ impl Mul for Mat2 {
 
 //===================
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
+#[repr(C, align(16))]
 pub struct Mat3 {
     ///col1
     pub a: Vec3,
@@ -102,28 +107,25 @@ impl Mat3 {
     }
 
     pub fn translate(self, factor: Vec2) -> Self {
-        let mut trans_mat = Self::IDENTITY;
-
-        trans_mat.c.x += factor.x;
-        trans_mat.c.y += factor.y;
-
-        self * trans_mat
+        self * Self::new(
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(factor.x, factor.y, 1.0),
+        )
     }
 
     pub fn scale(self, factor: Vec2) -> Self {
-        let scale_mat = Self::new_diagonal(Vec3::new(factor.x, factor.y, 1.0));
-
-        self * scale_mat
+        self * Self::new_diagonal(Vec3::new(factor.x, factor.y, 1.0))
     }
 
     pub fn rotate(self, radian: f32) -> Self {
         let cos = radian.cos();
         let sin = radian.sin();
 
-        self * Mat3::new(
+        self * Self::new(
             Vec3::new(cos, sin, 0.0),
             Vec3::new(-sin, cos, 0.0),
-            Vec3::UNIT_Z,
+            Vec3::new(0.0, 0.0, 1.0),
         )
     }
 }
@@ -165,9 +167,12 @@ impl Mul<Vec3> for Mat3 {
 
 impl MulAssign for Mat3 {
     fn mul_assign(&mut self, other: Mat3) {
-        self.a = *self * other.a;
-        self.b = *self * other.b;
-        self.c = *self * other.c;
+        let a = *self * other.a;
+        let b = *self * other.b;
+        let c = *self * other.c;
+        self.a = a;
+        self.b = b;
+        self.c = c;
     }
 }
 
@@ -182,7 +187,8 @@ impl Mul for Mat3 {
 
 //===================
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
+#[repr(C, align(16))]
 pub struct Mat4 {
     ///col1
     pub a: Vec4,
@@ -210,20 +216,45 @@ impl Mat4 {
         }
     }
 
+    ///Right Handed, For Vulkan, TODO: config compilation
+    pub fn look_at(camera: Vec3, target: Vec3, world_y_axis: Vec3) -> Self {
+        let target_to_camera = (camera - target).normalize(); //direction
+        let camera_x_axis = world_y_axis.cross(target_to_camera).normalize(); //right
+        let camera_y_axis = target_to_camera.cross(camera_x_axis); //up
+
+        Self::new(
+            Vec4::new(camera_x_axis.x, camera_y_axis.x, target_to_camera.x, 0.0),
+            Vec4::new(camera_x_axis.y, camera_y_axis.y, target_to_camera.y, 0.0),
+            Vec4::new(camera_x_axis.z, camera_y_axis.z, target_to_camera.z, 0.0),
+            Vec4::new(0.0, 0.0, 0.0, 1.0),
+        )
+        .translate(-camera)
+    }
+
+    ///Right Handed, Zero to One. For Vulkan, TODO: config compilation
+    pub fn perspective(fov_rad: f32, aspect: f32, near: f32, far: f32) -> Self {
+        let focal_length = 1.0 / (fov_rad * 0.5).tan();
+        let depth = near - far;
+
+        Self::new(
+            Vec4::new(focal_length / aspect, 0.0, 0.0, 0.0),
+            Vec4::new(0.0, -focal_length, 0.0, 0.0),
+            Vec4::new(0.0, 0.0, far / depth, -1.0),
+            Vec4::new(0.0, 0.0, 2.0*near * far / depth, 0.0),
+        )
+    }
+
     pub fn translate(self, factor: Vec3) -> Self {
-        let mut trans_mat = Self::IDENTITY;
-
-        trans_mat.d.x += factor.x;
-        trans_mat.d.y += factor.y;
-        trans_mat.d.z += factor.z;
-
-        self * trans_mat
+        self * Self::new(
+            Vec4::new(1.0, 0.0, 0.0, 0.0),
+            Vec4::new(0.0, 1.0, 0.0, 0.0),
+            Vec4::new(0.0, 0.0, 1.0, 0.0),
+            Vec4::new(factor.x, factor.y, factor.z, 1.0),
+        )
     }
 
     pub fn scale(self, factor: Vec3) -> Self {
-        let scale_mat = Self::new_diagonal(Vec4::new(factor.x, factor.y, factor.z, 1.0));
-
-        self * scale_mat
+        self * Self::new_diagonal(Vec4::new(factor.x, factor.y, factor.z, 1.0))
     }
 
     pub fn rotate(self, radian: f32, axis: Vec3) -> Self {
@@ -246,38 +277,6 @@ impl Mat4 {
             Vec4::new(xy - wz, 1.0 - xx - zz, yz + wx, 0.0),
             Vec4::new(xz + wy, yz - wx, 1.0 - xx - yy, 0.0),
             Vec4::new(0.0, 0.0, 0.0, 1.0),
-        )
-    }
-
-    pub fn look_at(camera: Vec3, target: Vec3, world_y_axis: Vec3) -> Self {
-        let target_to_camera = (camera - target).normalize(); //direction
-        let camera_x_axis = world_y_axis.cross(target_to_camera).normalize(); //right
-        let camera_y_axis = target_to_camera.cross(camera_x_axis); //up
-
-        let mut look_at_matrix = Self::IDENTITY;
-
-        look_at_matrix.a.x = camera_x_axis.x;
-        look_at_matrix.b.x = camera_x_axis.y;
-        look_at_matrix.c.x = camera_x_axis.z;
-        look_at_matrix.a.y = camera_y_axis.x;
-        look_at_matrix.b.y = camera_y_axis.y;
-        look_at_matrix.c.y = camera_y_axis.z;
-        look_at_matrix.a.z = target_to_camera.x;
-        look_at_matrix.b.z = target_to_camera.y;
-        look_at_matrix.c.z = target_to_camera.z;
-
-        look_at_matrix.translate(-camera)
-    }
-
-    pub fn perspective(fov_rad: f32, aspect: f32, near: f32, far: f32) -> Self {
-        let focal_length = 1.0 / (fov_rad * 0.5).tan();
-        let depth = far - near;
-
-        Self::new(
-            Vec4::new(focal_length / aspect, 0.0, 0.0, 0.0),
-            Vec4::new(0.0, focal_length, 0.0, 0.0),
-            Vec4::new(0.0, 0.0, -(near + far) / depth, -1.0),
-            Vec4::new(0., 0.0, -2.0 * near * far / depth, 0.0),
         )
     }
 }
@@ -321,10 +320,14 @@ impl Mul<Vec4> for Mat4 {
 
 impl MulAssign for Mat4 {
     fn mul_assign(&mut self, other: Mat4) {
-        self.a = *self * other.a;
-        self.b = *self * other.b;
-        self.c = *self * other.c;
-        self.d = *self * other.d;
+        let a = *self * other.a;
+        let b = *self * other.b;
+        let c = *self * other.c;
+        let d = *self * other.d;
+        self.a = a;
+        self.b = b;
+        self.c = c;
+        self.d = d;
     }
 }
 
