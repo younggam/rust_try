@@ -10,7 +10,7 @@ ash = { version = "0.33.3+1.2.191", optional = true }
 ash-window = { version = "0.7.0", optional = true }
 winit = "0.25.0"
 shaderc = "0.7.3"
-image = { version = "0.23.14", default-features = false, features = ["png"] }
+image = { version = "0.23.14", default-features = false, features = ["jpeg"] }
 raw-window-handle = "0.3.3"
 
 [features]

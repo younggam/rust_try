@@ -19,7 +19,7 @@ impl Mat2 {
         Self { a, b }
     }
 
-    pub const fn new_diagonal(value: Vec2) -> Self {
+    pub const fn diagonal(value: Vec2) -> Self {
         Self {
             a: Vec2::new(value.x, 0.0),
             b: Vec2::new(0.0, value.y),
@@ -98,7 +98,7 @@ impl Mat3 {
         Self { a, b, c }
     }
 
-    pub const fn new_diagonal(value: Vec3) -> Self {
+    pub const fn diagonal(value: Vec3) -> Self {
         Self {
             a: Vec3::new(value.x, 0.0, 0.0),
             b: Vec3::new(0.0, value.y, 0.0),
@@ -115,7 +115,7 @@ impl Mat3 {
     }
 
     pub fn scale(self, factor: Vec2) -> Self {
-        self * Self::new_diagonal(Vec3::new(factor.x, factor.y, 1.0))
+        self * Self::diagonal(Vec3::new(factor.x, factor.y, 1.0))
     }
 
     pub fn rotate(self, radian: f32) -> Self {
@@ -207,7 +207,7 @@ impl Mat4 {
         Self { a, b, c, d }
     }
 
-    pub const fn new_diagonal(value: Vec4) -> Self {
+    pub const fn diagonal(value: Vec4) -> Self {
         Self {
             a: Vec4::new(value.x, 0.0, 0.0, 0.0),
             b: Vec4::new(0.0, value.y, 0.0, 0.0),
@@ -240,7 +240,7 @@ impl Mat4 {
             Vec4::new(focal_length / aspect, 0.0, 0.0, 0.0),
             Vec4::new(0.0, -focal_length, 0.0, 0.0),
             Vec4::new(0.0, 0.0, far / depth, -1.0),
-            Vec4::new(0.0, 0.0, 2.0*near * far / depth, 0.0),
+            Vec4::new(0.0, 0.0, near * far / depth, 0.0),
         )
     }
 
@@ -254,7 +254,7 @@ impl Mat4 {
     }
 
     pub fn scale(self, factor: Vec3) -> Self {
-        self * Self::new_diagonal(Vec4::new(factor.x, factor.y, factor.z, 1.0))
+        self * Self::diagonal(Vec4::new(factor.x, factor.y, factor.z, 1.0))
     }
 
     pub fn rotate(self, radian: f32, axis: Vec3) -> Self {
