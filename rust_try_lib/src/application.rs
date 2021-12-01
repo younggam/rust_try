@@ -53,10 +53,26 @@ pub struct UniformBufferObject {
 }
 
 const VERTICES: [Vertex; 4] = [
-    Vertex::new(Vec2::new(-0.5, -0.5), Vec3::UNIT_X),
-    Vertex::new(Vec2::new(0.5, -0.5), Vec3::UNIT_Y),
-    Vertex::new(Vec2::new(0.5, 0.5), Vec3::UNIT_Z),
-    Vertex::new(Vec2::new(-0.5, 0.5), Vec3::new(1.0, 1.0, 1.0)),
+    Vertex::new(
+        Vec2::new(-0.5, -0.5),
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec2::new(1.0, 0.0),
+    ),
+    Vertex::new(
+        Vec2::new(0.5, -0.5),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec2::new(0.0, 0.0),
+    ),
+    Vertex::new(
+        Vec2::new(0.5, 0.5),
+        Vec3::new(0.0, 0.0, 1.0),
+        Vec2::new(0.0, 1.0),
+    ),
+    Vertex::new(
+        Vec2::new(-0.5, 0.5),
+        Vec3::new(1.0, 1.0, 1.0),
+        Vec2::new(1.0, 1.0),
+    ),
 ];
 
 const INDICES: [u16; 6] = [0, 1, 2, 2, 3, 0];
@@ -589,16 +605,24 @@ impl Application {
     }
 
     fn create_descriptor_set_layout(&mut self) {
-        let ubo_layout_binding = [vk::DescriptorSetLayoutBinding {
+        let ubo_layout_binding = vk::DescriptorSetLayoutBinding {
             binding: 0,
             descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
             descriptor_count: 1,
             stage_flags: vk::ShaderStageFlags::VERTEX,
             p_immutable_samplers: std::ptr::null(),
-        }];
+        };
 
-        let layout_info =
-            vk::DescriptorSetLayoutCreateInfo::builder().bindings(&ubo_layout_binding);
+        let sampler_layout_binding = vk::DescriptorSetLayoutBinding {
+            binding: 1,
+            descriptor_count: 1,
+            descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            p_immutable_samplers: std::ptr::null(),
+            stage_flags: vk::ShaderStageFlags::FRAGMENT,
+        };
+
+        let bindings = [ubo_layout_binding, sampler_layout_binding];
+        let layout_info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
 
         self.descriptor_set_layout = unsafe {
             self.device
@@ -1101,13 +1125,19 @@ impl Application {
     }
 
     fn create_descriptor_pool(&mut self) {
-        let pool_size = [vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: self.swapchain_images.len() as u32,
-        }];
+        let pool_sizes = [
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::UNIFORM_BUFFER,
+                descriptor_count: self.swapchain_images.len() as u32,
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                descriptor_count: self.swapchain_images.len() as u32,
+            },
+        ];
 
         let pool_info = vk::DescriptorPoolCreateInfo::builder()
-            .pool_sizes(&pool_size)
+            .pool_sizes(&pool_sizes)
             .max_sets(self.swapchain_images.len() as u32);
 
         self.descriptor_pool = unsafe {
@@ -1140,16 +1170,31 @@ impl Application {
                 range: std::mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
             }];
 
-            let descriptor_write = vk::WriteDescriptorSet::builder()
-                .dst_set(self.descriptor_sets[i])
-                .dst_binding(0)
-                .dst_array_element(0)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(&buffer_info);
+            let image_info = [vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                image_view: self.texture_image_view,
+                sampler: self.texture_sampler,
+            }];
+
+            let descriptor_writes = [
+                vk::WriteDescriptorSet::builder()
+                    .dst_set(self.descriptor_sets[i])
+                    .dst_binding(0)
+                    .dst_array_element(0)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .buffer_info(&buffer_info)
+                    .build(),
+                vk::WriteDescriptorSet::builder()
+                    .dst_set(self.descriptor_sets[i])
+                    .dst_binding(1)
+                    .dst_array_element(0)
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .image_info(&image_info)
+                    .build(),
+            ];
 
             unsafe {
-                self.device
-                    .update_descriptor_sets(&[*descriptor_write], &[]);
+                self.device.update_descriptor_sets(&descriptor_writes, &[]);
             }
         }
     }

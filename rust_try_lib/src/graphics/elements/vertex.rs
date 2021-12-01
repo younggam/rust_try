@@ -4,14 +4,20 @@ use crate::*;
 use ash::vk;
 
 #[derive(Clone, Debug, Copy)]
+#[repr(C)]
 pub struct Vertex {
     pub pos: Vec2,
     pub color: Vec3,
+    pub tex_coord: Vec2,
 }
 
 impl Vertex {
-    pub const fn new(pos: Vec2, color: Vec3) -> Self {
-        Self { pos, color }
+    pub const fn new(pos: Vec2, color: Vec3, tex_coord: Vec2) -> Self {
+        Self {
+            pos,
+            color,
+            tex_coord,
+        }
     }
 
     #[cfg(feature = "ash")]
@@ -24,7 +30,7 @@ impl Vertex {
     }
 
     #[cfg(feature = "ash")]
-    pub fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 2] {
+    pub fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 3] {
         [
             vk::VertexInputAttributeDescription {
                 binding: 0,
@@ -37,6 +43,12 @@ impl Vertex {
                 location: 1,
                 format: vk::Format::R32G32B32_SFLOAT,
                 offset: offset_of!(Self, color) as u32,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 2,
+                format: vk::Format::R32G32_SFLOAT,
+                offset: offset_of!(Self, tex_coord) as u32,
             },
         ]
     }
