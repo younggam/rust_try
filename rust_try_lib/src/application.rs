@@ -52,30 +52,54 @@ pub struct UniformBufferObject {
     pub proj: Mat4,
 }
 
-const VERTICES: [Vertex; 4] = [
+const VERTICES: [Vertex; 8] = [
     Vertex::new(
-        Vec2::new(-0.5, -0.5),
+        Vec3::new(-0.5, -0.5, 0.0),
         Vec3::new(1.0, 0.0, 0.0),
         Vec2::new(1.0, 0.0),
     ),
     Vertex::new(
-        Vec2::new(0.5, -0.5),
+        Vec3::new(0.5, -0.5, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
         Vec2::new(0.0, 0.0),
     ),
     Vertex::new(
-        Vec2::new(0.5, 0.5),
+        Vec3::new(0.5, 0.5, 0.0),
         Vec3::new(0.0, 0.0, 1.0),
         Vec2::new(0.0, 1.0),
     ),
     Vertex::new(
-        Vec2::new(-0.5, 0.5),
+        Vec3::new(-0.5, 0.5, 0.0),
+        Vec3::new(1.0, 1.0, 1.0),
+        Vec2::new(1.0, 1.0),
+    ),
+    //
+    Vertex::new(
+        Vec3::new(-0.5, -0.5, -0.5),
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec2::new(1.0, 0.0),
+    ),
+    Vertex::new(
+        Vec3::new(0.5, -0.5, -0.5),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec2::new(0.0, 0.0),
+    ),
+    Vertex::new(
+        Vec3::new(0.5, 0.5, -0.5),
+        Vec3::new(0.0, 0.0, 1.0),
+        Vec2::new(0.0, 1.0),
+    ),
+    Vertex::new(
+        Vec3::new(-0.5, 0.5, -0.5),
         Vec3::new(1.0, 1.0, 1.0),
         Vec2::new(1.0, 1.0),
     ),
 ];
 
-const INDICES: [u16; 6] = [0, 1, 2, 2, 3, 0];
+const INDICES: [u16; 12] = [
+    0, 1, 2, 2, 3, 0, //
+    4, 5, 6, 6, 7, 4,
+];
 
 lazy_struct! {
 /**Temporary struct(possibly permanent) that manages whole application.
@@ -115,6 +139,10 @@ Following Vulkan Tutorial.*/
         graphics_pipeline: vk::Pipeline,
 
         command_pool: vk::CommandPool,
+
+        depth_image: vk::Image,
+        depth_image_memory: vk::DeviceMemory,
+        depth_image_view: vk::ImageView,
 
         texture_image: vk::Image,
         texture_image_memory: vk::DeviceMemory,
@@ -181,6 +209,10 @@ impl Application {
 
                 command_pool: vk::CommandPool::null(),
 
+                depth_image: vk::Image::null(),
+                depth_image_memory: vk::DeviceMemory::null(),
+                depth_image_view: vk::ImageView::null(),
+
                 texture_image: vk::Image::null(),
                 texture_image_memory: vk::DeviceMemory::null(),
                 texture_image_view: vk::ImageView::null(),
@@ -246,8 +278,9 @@ impl Application {
         self.create_render_pass();
         self.create_descriptor_set_layout();
         self.create_graphics_pipeline();
-        self.create_framebuffers();
         self.create_command_pool();
+        self.create_depth_resources();
+        self.create_framebuffers();
         self.create_texture_image();
         self.create_texture_image_view();
         self.create_texture_sampler();
@@ -290,6 +323,10 @@ impl Application {
 
     fn cleanup_swapchain(&mut self) {
         unsafe {
+            self.device.destroy_image_view(self.depth_image_view, None);
+            self.device.destroy_image(self.depth_image, None);
+            self.device.free_memory(self.depth_image_memory, None);
+
             for framebuffer in self.swapchain_framebuffers.drain(..) {
                 self.device.destroy_framebuffer(framebuffer, None);
             }
@@ -332,6 +369,7 @@ impl Application {
         self.create_image_views();
         self.create_render_pass();
         self.create_graphics_pipeline();
+        self.create_depth_resources();
         self.create_framebuffers();
         self.create_uniform_buffers();
         self.create_descriptor_pool();
@@ -556,13 +594,16 @@ impl Application {
 
     fn create_image_views(&mut self) {
         for swapchain_image in self.swapchain_images.iter() {
-            self.swapchain_image_views
-                .push(self.create_image_view(*swapchain_image, self.swapchain_image_format));
+            self.swapchain_image_views.push(self.create_image_view(
+                *swapchain_image,
+                self.swapchain_image_format,
+                vk::ImageAspectFlags::COLOR,
+            ));
         }
     }
 
     fn create_render_pass(&mut self) {
-        let color_attachment = [vk::AttachmentDescription::builder()
+        let color_attachment = vk::AttachmentDescription::builder()
             .format(self.swapchain_image_format)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::CLEAR)
@@ -570,30 +611,55 @@ impl Application {
             .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
             .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .build()];
+            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR);
+
+        let depth_attachment = vk::AttachmentDescription::builder()
+            .format(self.find_depth_format())
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
         let color_attachment_ref = [vk::AttachmentReference {
             attachment: 0,
             layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         }];
 
+        let depth_attachment_ref = vk::AttachmentReference {
+            attachment: 1,
+            layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        };
+
         let subpass = [vk::SubpassDescription::builder()
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
             .color_attachments(&color_attachment_ref)
+            .depth_stencil_attachment(&depth_attachment_ref)
             .build()];
 
         let dependency = [vk::SubpassDependency::builder()
             .src_subpass(vk::SUBPASS_EXTERNAL)
             .dst_subpass(0)
-            .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .src_stage_mask(
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+            )
             .src_access_mask(vk::AccessFlags::empty())
-            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+            .dst_stage_mask(
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+            )
+            .dst_access_mask(
+                vk::AccessFlags::COLOR_ATTACHMENT_WRITE
+                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            )
             .build()];
 
+        let attachments = [*color_attachment, *depth_attachment];
         let render_pass_info = vk::RenderPassCreateInfo::builder()
-            .attachments(&color_attachment)
+            .attachments(&attachments)
             .subpasses(&subpass)
             .dependencies(&dependency);
 
@@ -684,6 +750,12 @@ impl Application {
         let multisampling = vk::PipelineMultisampleStateCreateInfo::builder()
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
+        let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::builder()
+            .depth_test_enable(true)
+            .depth_write_enable(true)
+            .depth_compare_op(vk::CompareOp::LESS)
+            .depth_bounds_test_enable(false);
+
         let color_blend_attachment = [vk::PipelineColorBlendAttachmentState::builder()
             .color_write_mask(vk::ColorComponentFlags::all())
             .build()];
@@ -708,6 +780,7 @@ impl Application {
             .viewport_state(&viewport_state)
             .rasterization_state(&rasterizer)
             .multisample_state(&multisampling)
+            .depth_stencil_state(&depth_stencil)
             .color_blend_state(&color_blending)
             .layout(self.pipeline_layout)
             .render_pass(self.render_pass)
@@ -728,11 +801,11 @@ impl Application {
 
     fn create_framebuffers(&mut self) {
         for swapchain_image_view in self.swapchain_image_views.iter() {
-            let swapchain_image_view = [*swapchain_image_view];
+            let attachments = [*swapchain_image_view, self.depth_image_view];
 
             let framebuffer_info = vk::FramebufferCreateInfo::builder()
                 .render_pass(self.render_pass)
-                .attachments(&swapchain_image_view)
+                .attachments(&attachments)
                 .width(self.swapchain_extent.width)
                 .height(self.swapchain_extent.height)
                 .layers(1);
@@ -756,6 +829,61 @@ impl Application {
                 .create_command_pool(&pool_info, None)
                 .expect("failed to create command pool!")
         };
+    }
+
+    fn create_depth_resources(&mut self) {
+        let depth_format = self.find_depth_format();
+
+        let (image, image_memory) = self.create_image(
+            self.swapchain_extent.width,
+            self.swapchain_extent.height,
+            depth_format,
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        );
+        self.depth_image = image;
+        self.depth_image_memory = image_memory;
+        self.depth_image_view =
+            self.create_image_view(self.depth_image, depth_format, vk::ImageAspectFlags::DEPTH);
+    }
+
+    fn find_supported_format(
+        &self,
+        candidates: &Vec<vk::Format>,
+        tiling: vk::ImageTiling,
+        features: vk::FormatFeatureFlags,
+    ) -> vk::Format {
+        for format in candidates {
+            let props = unsafe {
+                self.instance
+                    .get_physical_device_format_properties(self.physical_device, *format)
+            };
+
+            if tiling == vk::ImageTiling::LINEAR
+                && (props.linear_tiling_features & features) == features
+            {
+                return *format;
+            } else if tiling == vk::ImageTiling::OPTIMAL
+                && (props.optimal_tiling_features & features) == features
+            {
+                return *format;
+            }
+        }
+
+        panic!("failed to find supported format!");
+    }
+
+    fn find_depth_format(&self) -> vk::Format {
+        self.find_supported_format(
+            &vec![
+                vk::Format::D32_SFLOAT,
+                vk::Format::D32_SFLOAT_S8_UINT,
+                vk::Format::D24_UNORM_S8_UINT,
+            ],
+            vk::ImageTiling::OPTIMAL,
+            vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
+        )
     }
 
     fn create_texture_image(&mut self) {
@@ -819,8 +947,11 @@ impl Application {
     }
 
     fn create_texture_image_view(&mut self) {
-        self.texture_image_view =
-            self.create_image_view(self.texture_image, vk::Format::R8G8B8A8_SRGB);
+        self.texture_image_view = self.create_image_view(
+            self.texture_image,
+            vk::Format::R8G8B8A8_SRGB,
+            vk::ImageAspectFlags::COLOR,
+        );
     }
 
     fn create_texture_sampler(&mut self) {
@@ -853,13 +984,18 @@ impl Application {
         };
     }
 
-    fn create_image_view(&self, image: vk::Image, format: vk::Format) -> vk::ImageView {
+    fn create_image_view(
+        &self,
+        image: vk::Image,
+        format: vk::Format,
+        aspect_flags: vk::ImageAspectFlags,
+    ) -> vk::ImageView {
         let view_info = vk::ImageViewCreateInfo::builder()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
             .format(format)
             .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
+                aspect_mask: aspect_flags,
                 base_mip_level: 0,
                 level_count: 1,
                 base_array_layer: 0,
@@ -1343,12 +1479,20 @@ impl Application {
                     ..Default::default()
                 });
 
-            let clear_color = [vk::ClearValue {
-                color: vk::ClearColorValue {
-                    float32: [0.0, 0.0, 0.0, 1.0],
+            let clear_values = [
+                vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 1.0],
+                    },
                 },
-            }];
-            render_pass_info = render_pass_info.clear_values(&clear_color);
+                vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue {
+                        depth: 1.0,
+                        stencil: 0,
+                    },
+                },
+            ];
+            render_pass_info = render_pass_info.clear_values(&clear_values);
 
             unsafe {
                 self.device.cmd_begin_render_pass(

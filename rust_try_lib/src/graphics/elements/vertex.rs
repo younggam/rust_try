@@ -6,13 +6,13 @@ use ash::vk;
 #[derive(Clone, Debug, Copy)]
 #[repr(C)]
 pub struct Vertex {
-    pub pos: Vec2,
+    pub pos: Vec3,
     pub color: Vec3,
     pub tex_coord: Vec2,
 }
 
 impl Vertex {
-    pub const fn new(pos: Vec2, color: Vec3, tex_coord: Vec2) -> Self {
+    pub const fn new(pos: Vec3, color: Vec3, tex_coord: Vec2) -> Self {
         Self {
             pos,
             color,
@@ -35,7 +35,7 @@ impl Vertex {
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 0,
-                format: vk::Format::R32G32_SFLOAT,
+                format: vk::Format::R32G32B32_SFLOAT,
                 offset: offset_of!(Self, pos) as u32,
             },
             vk::VertexInputAttributeDescription {
