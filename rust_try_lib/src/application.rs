@@ -11,6 +11,9 @@ use ash::vk;
 //Window surface size.
 const WINDOW_SIZE: winit::dpi::LogicalSize<u32> = winit::dpi::LogicalSize::new(800, 600);
 
+const MODEL_PATH: &str = "assets/models/viking_room.obj";
+const TEXTURE_PATH: &str = "assets/textures/viking_room.png";
+
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 const VALIDATION_LAYERS: [&[u8]; 1] = [b"VK_LAYER_KHRONOS_validation"];
@@ -52,54 +55,54 @@ pub struct UniformBufferObject {
     pub proj: Mat4,
 }
 
-const VERTICES: [Vertex; 8] = [
-    Vertex::new(
-        Vec3::new(-0.5, -0.5, 0.0),
-        Vec3::new(1.0, 0.0, 0.0),
-        Vec2::new(1.0, 0.0),
-    ),
-    Vertex::new(
-        Vec3::new(0.5, -0.5, 0.0),
-        Vec3::new(0.0, 1.0, 0.0),
-        Vec2::new(0.0, 0.0),
-    ),
-    Vertex::new(
-        Vec3::new(0.5, 0.5, 0.0),
-        Vec3::new(0.0, 0.0, 1.0),
-        Vec2::new(0.0, 1.0),
-    ),
-    Vertex::new(
-        Vec3::new(-0.5, 0.5, 0.0),
-        Vec3::new(1.0, 1.0, 1.0),
-        Vec2::new(1.0, 1.0),
-    ),
-    //
-    Vertex::new(
-        Vec3::new(-0.5, -0.5, -0.5),
-        Vec3::new(1.0, 0.0, 0.0),
-        Vec2::new(1.0, 0.0),
-    ),
-    Vertex::new(
-        Vec3::new(0.5, -0.5, -0.5),
-        Vec3::new(0.0, 1.0, 0.0),
-        Vec2::new(0.0, 0.0),
-    ),
-    Vertex::new(
-        Vec3::new(0.5, 0.5, -0.5),
-        Vec3::new(0.0, 0.0, 1.0),
-        Vec2::new(0.0, 1.0),
-    ),
-    Vertex::new(
-        Vec3::new(-0.5, 0.5, -0.5),
-        Vec3::new(1.0, 1.0, 1.0),
-        Vec2::new(1.0, 1.0),
-    ),
-];
-
-const INDICES: [u16; 12] = [
-    0, 1, 2, 2, 3, 0, //
-    4, 5, 6, 6, 7, 4,
-];
+// const VERTICES: [Vertex; 8] = [
+//     Vertex::new(
+//         Vec3::new(-0.5, -0.5, 0.0),
+//         Vec3::new(1.0, 0.0, 0.0),
+//         Vec2::new(1.0, 0.0),
+//     ),
+//     Vertex::new(
+//         Vec3::new(0.5, -0.5, 0.0),
+//         Vec3::new(0.0, 1.0, 0.0),
+//         Vec2::new(0.0, 0.0),
+//     ),
+//     Vertex::new(
+//         Vec3::new(0.5, 0.5, 0.0),
+//         Vec3::new(0.0, 0.0, 1.0),
+//         Vec2::new(0.0, 1.0),
+//     ),
+//     Vertex::new(
+//         Vec3::new(-0.5, 0.5, 0.0),
+//         Vec3::new(1.0, 1.0, 1.0),
+//         Vec2::new(1.0, 1.0),
+//     ),
+//     //
+//     Vertex::new(
+//         Vec3::new(-0.5, -0.5, -0.5),
+//         Vec3::new(1.0, 0.0, 0.0),
+//         Vec2::new(1.0, 0.0),
+//     ),
+//     Vertex::new(
+//         Vec3::new(0.5, -0.5, -0.5),
+//         Vec3::new(0.0, 1.0, 0.0),
+//         Vec2::new(0.0, 0.0),
+//     ),
+//     Vertex::new(
+//         Vec3::new(0.5, 0.5, -0.5),
+//         Vec3::new(0.0, 0.0, 1.0),
+//         Vec2::new(0.0, 1.0),
+//     ),
+//     Vertex::new(
+//         Vec3::new(-0.5, 0.5, -0.5),
+//         Vec3::new(1.0, 1.0, 1.0),
+//         Vec2::new(1.0, 1.0),
+//     ),
+// ];
+//
+// const INDICES: [u16; 12] = [
+//     0, 1, 2, 2, 3, 0, //
+//     4, 5, 6, 6, 7, 4,
+// ];
 
 lazy_struct! {
 /**Temporary struct(possibly permanent) that manages whole application.
@@ -149,6 +152,8 @@ Following Vulkan Tutorial.*/
         texture_image_view: vk::ImageView,
         texture_sampler: vk::Sampler,
 
+        vertices: Vec<Vertex>,
+        indices: Vec<u32>,
         vertex_buffer: vk::Buffer,
         vertex_buffer_memory: vk::DeviceMemory,
         index_buffer: vk::Buffer,
@@ -218,6 +223,8 @@ impl Application {
                 texture_image_view: vk::ImageView::null(),
                 texture_sampler: vk::Sampler::null(),
 
+                vertices: Vec::<Vertex>::new(),
+                indices: Vec::<u32>::new(),
                 vertex_buffer: vk::Buffer::null(),
                 vertex_buffer_memory: vk::DeviceMemory::null(),
                 index_buffer: vk::Buffer::null(),
@@ -284,6 +291,7 @@ impl Application {
         self.create_texture_image();
         self.create_texture_image_view();
         self.create_texture_sampler();
+        self.load_model();
         self.create_vertex_buffer();
         self.create_index_buffer();
         self.create_uniform_buffers();
@@ -887,7 +895,7 @@ impl Application {
     }
 
     fn create_texture_image(&mut self) {
-        let pixels = image::open("assets/textures/texture.jpg")
+        let pixels = image::open(TEXTURE_PATH)
             .expect("failed to load texture image!")
             .into_rgba8();
         let (tex_width, tex_height) = pixels.dimensions();
@@ -1160,8 +1168,47 @@ impl Application {
         self.end_single_time_commands(command_buffer);
     }
 
+    fn load_model(&mut self) {
+        let (models, materials) = tobj::load_obj(
+            MODEL_PATH,
+            &tobj::LoadOptions {
+                triangulate: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let mut unique_vertices = std::collections::HashMap::<Vertex, u32>::new();
+
+        for model in models {
+            for index in model.mesh.indices {
+                let index = index as usize;
+                let vertex = Vertex {
+                    pos: Vec3::new(
+                        model.mesh.positions[3 * index + 0],
+                        model.mesh.positions[3 * index + 1],
+                        model.mesh.positions[3 * index + 2],
+                    ),
+                    tex_coord: Vec2::new(
+                        model.mesh.texcoords[2 * index + 0],
+                        1.0 - model.mesh.texcoords[2 * index + 1],
+                    ),
+                    color: Vec3::new(1.0, 1.0, 1.0),
+                };
+
+                if !unique_vertices.contains_key(&vertex) {
+                    unique_vertices.insert(vertex, self.vertices.len() as u32);
+                    self.vertices.push(vertex);
+                }
+
+                self.indices.push(unique_vertices[&vertex].clone());
+            }
+        }
+    }
+
     fn create_vertex_buffer(&mut self) {
-        let buffer_size = (std::mem::size_of_val(&VERTICES[0]) * VERTICES.len()) as vk::DeviceSize;
+        let buffer_size =
+            (std::mem::size_of_val(&self.vertices[0]) * self.vertices.len()) as vk::DeviceSize;
 
         let (staging_buffer, staging_buffer_memory) = self.create_buffer(
             buffer_size,
@@ -1180,9 +1227,9 @@ impl Application {
                 )
                 .unwrap();
             std::ptr::copy_nonoverlapping(
-                &VERTICES[0] as *const Vertex,
+                &self.vertices[0] as *const Vertex,
                 data as *mut Vertex,
-                VERTICES.len(),
+                self.vertices.len(),
             );
             self.device.unmap_memory(staging_buffer_memory);
         }
@@ -1204,7 +1251,8 @@ impl Application {
     }
 
     fn create_index_buffer(&mut self) {
-        let buffer_size = (std::mem::size_of_val(&INDICES[0]) * INDICES.len()) as vk::DeviceSize;
+        let buffer_size =
+            (std::mem::size_of_val(&self.indices[0]) * self.indices.len()) as vk::DeviceSize;
 
         let (staging_buffer, staging_buffer_memory) = self.create_buffer(
             buffer_size,
@@ -1223,9 +1271,9 @@ impl Application {
                 )
                 .unwrap();
             std::ptr::copy_nonoverlapping(
-                &INDICES[0] as *const u16,
-                data as *mut u16,
-                INDICES.len(),
+                &self.indices[0] as *const u32,
+                data as *mut u32,
+                self.indices.len(),
             );
             self.device.unmap_memory(staging_buffer_memory);
         }
@@ -1520,7 +1568,7 @@ impl Application {
                     self.command_buffers[i],
                     self.index_buffer,
                     0,
-                    vk::IndexType::UINT16,
+                    vk::IndexType::UINT32,
                 );
 
                 self.device.cmd_bind_descriptor_sets(
@@ -1534,7 +1582,7 @@ impl Application {
 
                 self.device.cmd_draw_indexed(
                     self.command_buffers[i],
-                    INDICES.len() as u32,
+                    self.indices.len() as u32,
                     1,
                     0,
                     0,

@@ -3,7 +3,7 @@ use crate::*;
 
 use ash::vk;
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct Vertex {
     pub pos: Vec3,

@@ -1,11 +1,34 @@
+use std::fmt::Debug;
+use std::hash::{Hash, Hasher};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-pub trait Vector {
-    fn normalize(self) -> Self;
+pub trait Vector:
+    Clone
+    + Debug
+    + Copy
+    + Default
+    + PartialEq
+    + Sized
+    + Add
+    + AddAssign
+    + Div<f32>
+    + DivAssign<f32>
+    + Mul<f32>
+    + MulAssign<f32>
+    + Neg
+    + Sub
+    + SubAssign
+{
+    fn test_valid(&self);
+    fn len2(&self) -> f32;
+    fn normalize(self) -> <Self as Div<f32>>::Output {
+        self.test_valid();
+        self / self.len2().sqrt()
+    }
     fn dot(self, other: Self) -> Self;
 }
 
-#[derive(Clone, Debug, Copy, Default)]
+#[derive(Clone, Debug, Copy, Default, PartialEq)]
 #[repr(C, align(8))]
 pub struct Vec2 {
     pub x: f32,
@@ -22,8 +45,14 @@ impl Vec2 {
 }
 
 impl Vector for Vec2 {
-    fn normalize(self) -> Self {
-        self / (self.x * self.x + self.y * self.y).sqrt()
+    fn test_valid(&self) {
+        if self.x.is_nan() || self.y.is_nan() {
+            panic!("This Vector somehow contains NaN components");
+        }
+    }
+
+    fn len2(&self) -> f32 {
+        self.x * self.x + self.y * self.y
     }
 
     fn dot(mut self, other: Self) -> Self {
@@ -93,6 +122,7 @@ impl DivAssign<f32> for Vec2 {
     fn div_assign(&mut self, scalar: f32) {
         self.x /= scalar;
         self.y /= scalar;
+        self.test_valid();
     }
 }
 
@@ -114,9 +144,18 @@ impl Div<f32> for Vec2 {
 //     }
 // }
 
+impl Eq for Vec2 {}
+
+impl Hash for Vec2 {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.x.to_bits().hash(state);
+        self.y.to_bits().hash(state);
+    }
+}
+
 //===========================
 
-#[derive(Clone, Debug, Copy, Default)]
+#[derive(Clone, Debug, Copy, Default, PartialEq)]
 #[repr(C, align(16))]
 pub struct Vec3 {
     pub x: f32,
@@ -143,8 +182,14 @@ impl Vec3 {
 }
 
 impl Vector for Vec3 {
-    fn normalize(self) -> Self {
-        self / (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
+    fn test_valid(&self) {
+        if self.x.is_nan() || self.y.is_nan() || self.z.is_nan() {
+            panic!("This Vector somehow contains NaN components");
+        }
+    }
+
+    fn len2(&self) -> f32 {
+        self.x * self.x + self.y * self.y + self.z * self.z
     }
 
     fn dot(mut self, other: Self) -> Self {
@@ -219,6 +264,7 @@ impl DivAssign<f32> for Vec3 {
         self.x /= scalar;
         self.y /= scalar;
         self.z /= scalar;
+        self.test_valid();
     }
 }
 
@@ -240,9 +286,19 @@ impl Div<f32> for Vec3 {
 //     }
 // }
 
+impl Eq for Vec3 {}
+
+impl Hash for Vec3 {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.x.to_bits().hash(state);
+        self.y.to_bits().hash(state);
+        self.z.to_bits().hash(state);
+    }
+}
+
 //===========================
 
-#[derive(Clone, Debug, Copy, Default)]
+#[derive(Clone, Debug, Copy, Default, PartialEq)]
 #[repr(C, align(16))]
 pub struct Vec4 {
     pub x: f32,
@@ -263,8 +319,14 @@ impl Vec4 {
 }
 
 impl Vector for Vec4 {
-    fn normalize(self) -> Self {
-        self / (self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w).sqrt()
+    fn test_valid(&self) {
+        if self.x.is_nan() || self.y.is_nan() || self.z.is_nan() || self.z.is_nan() {
+            panic!("This Vector somehow contains NaN components");
+        }
+    }
+
+    fn len2(&self) -> f32 {
+        self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w
     }
 
     fn dot(mut self, other: Self) -> Self {
@@ -344,6 +406,7 @@ impl DivAssign<f32> for Vec4 {
         self.y /= scalar;
         self.z /= scalar;
         self.w /= scalar;
+        self.test_valid();
     }
 }
 
@@ -353,5 +416,16 @@ impl Div<f32> for Vec4 {
     fn div(mut self, scalar: f32) -> Self::Output {
         self /= scalar;
         self
+    }
+}
+
+impl Eq for Vec4 {}
+
+impl Hash for Vec4 {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.x.to_bits().hash(state);
+        self.y.to_bits().hash(state);
+        self.z.to_bits().hash(state);
+        self.w.to_bits().hash(state);
     }
 }
