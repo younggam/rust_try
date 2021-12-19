@@ -147,6 +147,7 @@ Following Vulkan Tutorial.*/
         depth_image_memory: vk::DeviceMemory,
         depth_image_view: vk::ImageView,
 
+        mip_levels: u32,
         texture_image: vk::Image,
         texture_image_memory: vk::DeviceMemory,
         texture_image_view: vk::ImageView,
@@ -218,6 +219,7 @@ impl Application {
                 depth_image_memory: vk::DeviceMemory::null(),
                 depth_image_view: vk::ImageView::null(),
 
+                mip_levels: 0,
                 texture_image: vk::Image::null(),
                 texture_image_memory: vk::DeviceMemory::null(),
                 texture_image_view: vk::ImageView::null(),
@@ -606,6 +608,7 @@ impl Application {
                 *swapchain_image,
                 self.swapchain_image_format,
                 vk::ImageAspectFlags::COLOR,
+                1,
             ));
         }
     }
@@ -845,6 +848,7 @@ impl Application {
         let (image, image_memory) = self.create_image(
             self.swapchain_extent.width,
             self.swapchain_extent.height,
+            1,
             depth_format,
             vk::ImageTiling::OPTIMAL,
             vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
@@ -852,8 +856,12 @@ impl Application {
         );
         self.depth_image = image;
         self.depth_image_memory = image_memory;
-        self.depth_image_view =
-            self.create_image_view(self.depth_image, depth_format, vk::ImageAspectFlags::DEPTH);
+        self.depth_image_view = self.create_image_view(
+            self.depth_image,
+            depth_format,
+            vk::ImageAspectFlags::DEPTH,
+            1,
+        );
     }
 
     fn find_supported_format(
@@ -900,6 +908,7 @@ impl Application {
             .into_rgba8();
         let (tex_width, tex_height) = pixels.dimensions();
         let image_size = pixels.len();
+        self.mip_levels = (tex_width.max(tex_height) as f32).log2().floor() as u32 + 1;
 
         let (staging_buffer, staging_buffer_memory) = self.create_buffer(
             image_size as vk::DeviceSize,
@@ -926,9 +935,12 @@ impl Application {
         let (image, image_memory) = self.create_image(
             tex_width,
             tex_height,
+            self.mip_levels,
             vk::Format::R8G8B8A8_SRGB,
             vk::ImageTiling::OPTIMAL,
-            vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+            vk::ImageUsageFlags::TRANSFER_SRC
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::SAMPLED,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         );
         self.texture_image = image;
@@ -939,19 +951,174 @@ impl Application {
             vk::Format::R8G8B8A8_SRGB,
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            self.mip_levels,
         );
         self.copy_buffer_to_image(staging_buffer, self.texture_image, tex_width, tex_height);
-        self.transition_image_layout(
-            self.texture_image,
-            vk::Format::R8G8B8A8_SRGB,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        );
+        // self.transition_image_layout(
+        //     self.texture_image,
+        //     vk::Format::R8G8B8A8_SRGB,
+        //     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        //     vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        // );
 
         unsafe {
             self.device.destroy_buffer(staging_buffer, None);
             self.device.free_memory(staging_buffer_memory, None);
         }
+
+        self.generate_mipmaps(
+            self.texture_image,
+            vk::Format::R8G8B8A8_SRGB,
+            tex_width,
+            tex_height,
+            self.mip_levels,
+        );
+    }
+
+    fn generate_mipmaps(
+        &self,
+        image: vk::Image,
+        image_format: vk::Format,
+        tex_width: u32,
+        tex_height: u32,
+        mip_levels: u32,
+    ) {
+        let format_properties = unsafe {
+            self.instance
+                .get_physical_device_format_properties(self.physical_device, image_format)
+        };
+
+        if !format_properties
+            .linear_tiling_features
+            .contains(vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR)
+        {
+            panic!("texture image format does not support linear blitting!");
+        }
+
+        let command_buffer = self.begin_single_time_commands();
+
+        let mut barrier = vk::ImageMemoryBarrier::builder()
+            .image(image)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_array_layer: 0,
+                layer_count: 1,
+                base_mip_level: 0,
+                level_count: 1,
+            })
+            .build();
+
+        let mut mip_width = tex_width as i32;
+        let mut mip_height = tex_height as i32;
+
+        for i in 1..mip_levels {
+            barrier.subresource_range.base_mip_level = i - 1;
+            barrier.old_layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
+            barrier.new_layout = vk::ImageLayout::TRANSFER_SRC_OPTIMAL;
+            barrier.src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
+            barrier.dst_access_mask = vk::AccessFlags::TRANSFER_READ;
+
+            unsafe {
+                self.device.cmd_pipeline_barrier(
+                    command_buffer,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[barrier],
+                );
+            }
+
+            let blit = vk::ImageBlit {
+                src_offsets: [
+                    vk::Offset3D { x: 0, y: 0, z: 0 },
+                    vk::Offset3D {
+                        x: mip_width,
+                        y: mip_height,
+                        z: 1,
+                    },
+                ],
+                src_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    mip_level: i - 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                dst_offsets: [
+                    vk::Offset3D { x: 0, y: 0, z: 0 },
+                    vk::Offset3D {
+                        x: if mip_width > 1 { mip_width / 2 } else { 1 },
+                        y: if mip_height > 1 { mip_height / 2 } else { 1 },
+                        z: 1,
+                    },
+                ],
+                dst_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    mip_level: i,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+            };
+
+            unsafe {
+                self.device.cmd_blit_image(
+                    command_buffer,
+                    image,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    image,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &[blit],
+                    vk::Filter::LINEAR,
+                );
+            }
+
+            barrier.old_layout = vk::ImageLayout::TRANSFER_SRC_OPTIMAL;
+            barrier.new_layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            barrier.src_access_mask = vk::AccessFlags::TRANSFER_READ;
+            barrier.dst_access_mask = vk::AccessFlags::SHADER_READ;
+
+            unsafe {
+                self.device.cmd_pipeline_barrier(
+                    command_buffer,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[barrier],
+                );
+            }
+
+            if mip_width > 1 {
+                mip_width /= 2;
+            }
+            if mip_height > 1 {
+                mip_height /= 2;
+            }
+        }
+
+        barrier.subresource_range.base_mip_level = mip_levels - 1;
+        barrier.old_layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
+        barrier.new_layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+        barrier.src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
+        barrier.dst_access_mask = vk::AccessFlags::SHADER_READ;
+
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                command_buffer,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[barrier],
+            );
+        }
+
+        self.end_single_time_commands(command_buffer);
     }
 
     fn create_texture_image_view(&mut self) {
@@ -959,6 +1126,7 @@ impl Application {
             self.texture_image,
             vk::Format::R8G8B8A8_SRGB,
             vk::ImageAspectFlags::COLOR,
+            self.mip_levels,
         );
     }
 
@@ -981,9 +1149,9 @@ impl Application {
             .compare_enable(false)
             .compare_op(vk::CompareOp::ALWAYS)
             .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
-            .mip_lod_bias(0.0)
             .min_lod(0.0)
-            .max_lod(0.0);
+            .max_lod(self.mip_levels as f32)
+            .mip_lod_bias(0.0);
 
         self.texture_sampler = unsafe {
             self.device
@@ -997,6 +1165,7 @@ impl Application {
         image: vk::Image,
         format: vk::Format,
         aspect_flags: vk::ImageAspectFlags,
+        mip_levels: u32,
     ) -> vk::ImageView {
         let view_info = vk::ImageViewCreateInfo::builder()
             .image(image)
@@ -1005,7 +1174,7 @@ impl Application {
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: aspect_flags,
                 base_mip_level: 0,
-                level_count: 1,
+                level_count: mip_levels,
                 base_array_layer: 0,
                 layer_count: 1,
             });
@@ -1021,6 +1190,7 @@ impl Application {
         &self,
         width: u32,
         height: u32,
+        mip_levels: u32,
         format: vk::Format,
         tiling: vk::ImageTiling,
         usage: vk::ImageUsageFlags,
@@ -1033,7 +1203,7 @@ impl Application {
                 height,
                 depth: 1,
             })
-            .mip_levels(1)
+            .mip_levels(mip_levels)
             .array_layers(1)
             .format(format)
             .tiling(tiling)
@@ -1077,6 +1247,7 @@ impl Application {
         format: vk::Format,
         old_layout: vk::ImageLayout,
         new_layout: vk::ImageLayout,
+        mip_levels: u32,
     ) {
         let command_buffer = self.begin_single_time_commands();
 
@@ -1089,7 +1260,7 @@ impl Application {
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 base_mip_level: 0,
-                level_count: 1,
+                level_count: mip_levels,
                 base_array_layer: 0,
                 layer_count: 1,
             });
@@ -1169,7 +1340,7 @@ impl Application {
     }
 
     fn load_model(&mut self) {
-        let (models, materials) = tobj::load_obj(
+        let (models, _) = tobj::load_obj(
             MODEL_PATH,
             &tobj::LoadOptions {
                 triangulate: true,
