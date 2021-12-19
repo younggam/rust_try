@@ -1,6 +1,6 @@
-use crate::graphics::elements::Vertex;
-use crate::math::*;
 use crate::*;
+use graphics::elements::Vertex;
+use math::*;
 
 use std::ffi::{c_void, CStr, CString};
 use std::io::Cursor;
