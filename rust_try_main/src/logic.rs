@@ -1,11 +1,10 @@
-use super::control::*;
+use rust_try_lib::system::control::*;
 
-pub struct InnerMain<T: Control> {
+pub struct InnerLogic<T: Control> {
     control: T,
 }
 
-#[cfg(feature = "winit")]
-impl InnerMain<WinitControl> {
+impl InnerLogic<WinitControl> {
     pub fn new() -> Self {
         let mut control = WinitControl::new();
         control.set_start_task(Self::start);
@@ -29,5 +28,4 @@ impl InnerMain<WinitControl> {
     }
 }
 
-#[cfg(feature = "winit")]
-pub type Main = InnerMain<WinitControl>;
+pub type Logic = InnerLogic<WinitControl>;

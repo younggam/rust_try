@@ -15,8 +15,6 @@ macro_rules! leaf_mod{
     }
 }
 
-leaf_mod! {pub application}
-
 pub mod graphics {
     pub mod core {
         #[cfg(all(feature = "ash", feature = "winit"))]
@@ -52,7 +50,7 @@ pub mod system {
         leaf_mod! {pub winit}
     }
 
-    leaf_mod! {pub main}
+    leaf_mod! {pub event}
 }
 
 pub mod utils {

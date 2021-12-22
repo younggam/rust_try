@@ -1,15 +1,16 @@
+use crate::logic::*;
+
 use rust_try_lib::graphics::Renderer;
-use rust_try_lib::system::Main;
 
 pub struct Application {
-    main: Main,
+    logic: Logic,
     renderer: Renderer,
 }
 
 impl Application {
     pub fn new() -> Self {
         Self {
-            main: Main::new(),
+            logic: Logic::new(),
             renderer: Renderer::new(),
         }
     }
@@ -19,6 +20,6 @@ impl Application {
     }
 
     pub fn run(self) {
-        self.main.run();
+        self.logic.run();
     }
 }

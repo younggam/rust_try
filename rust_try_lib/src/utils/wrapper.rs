@@ -3,7 +3,7 @@ mod once {
     pub struct Once<T>(Option<T>);
 
     impl<T> Once<T> {
-        pub fn new(item: T) -> Self {
+        pub const fn new(item: T) -> Self {
             Self(Some(item))
         }
 
@@ -30,13 +30,13 @@ mod lazy {
     pub struct LazyManual<T>(Option<T>);
 
     impl<T> LazyManual<T> {
-        pub fn new() -> Self {
+        pub const fn new() -> Self {
             Self(None)
         }
 
         /**initializes value
-
-        does nothing when value has already initialized*/
+        \n
+        \ndoes nothing when value has already initialized*/
         pub fn init(&mut self, item: T) {
             if let None = self.0 {
                 self.0 = Some(item);
