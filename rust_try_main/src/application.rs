@@ -1,5 +1,5 @@
-use crate::graphics::Renderer;
-use crate::system::Main;
+use rust_try_lib::graphics::Renderer;
+use rust_try_lib::system::Main;
 
 pub struct Application {
     main: Main,

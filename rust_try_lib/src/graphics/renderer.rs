@@ -16,7 +16,9 @@ impl InnerRenderer<CoreVulkan> {
         self.core.initialize();
     }
 
-    pub fn render(&self) {}
+    pub fn render(&mut self) {
+        self.core.render();
+    }
 }
 
 #[cfg(feature = "vulkan")]

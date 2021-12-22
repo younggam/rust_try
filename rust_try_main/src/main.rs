@@ -1,6 +1,9 @@
 use rust_try_lib::*;
 
+pub mod application;
+
 fn main() {
-    let app = Application::new();
+    let mut app = application::Application::new();
+    app.initialize();
     app.run();
 }

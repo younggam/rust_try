@@ -1902,7 +1902,7 @@ impl CoreVulkan {
         }
     }
 
-    fn draw_frame(&mut self) {
+    fn render(&mut self) {
         let framebuffer_size = self.window.inner_size();
         if framebuffer_size.width == 0 || framebuffer_size.height == 0 {
             return;
@@ -2262,5 +2262,9 @@ impl Core for CoreVulkan {
     fn initialize(&mut self) {
         self.init_window();
         self.init_vulkan();
+    }
+
+    fn render(&mut self) {
+        self.render();
     }
 }
