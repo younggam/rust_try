@@ -1,21 +1,40 @@
+use std::any::Any;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-///Implementor should hash its type_id if you want distinguish event based on type not field values.
-pub trait IsEvent: Eq + Hash {}
+///Implementor treated as Event. It will be distinguished only with its type.
+pub trait IsEvent {}
 
-pub struct EventRegistry<T: IsEvent> {
-    events: HashMap<T, Vec<fn(&T)>>,
+impl PartialEq for dyn IsEvent {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_id() == other.type_id()
+    }
 }
 
-impl<T: IsEvent> EventRegistry<T> {
+impl Hash for dyn IsEvent {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.type_id().hash(state);
+    }
+}
+
+impl Eq for dyn IsEvent {}
+
+///Literally registers events and behaviors
+///Events should be impelement IsEvent
+pub struct EventRegistry {
+    events: HashMap<Box<dyn IsEvent>, Vec<fn(&dyn IsEvent)>>,
+}
+
+impl EventRegistry {
     pub fn new() -> Self {
         Self {
-            events: HashMap::<T, Vec<fn(&T)>>::new(),
+            events: HashMap::<Box<dyn IsEvent>, Vec<fn(&dyn IsEvent)>>::new(),
         }
     }
 
-    pub fn on(&mut self, key: T, value: fn(&T)) {
+    ///put event
+    pub fn on<E: 'static + IsEvent>(&mut self, key: E, value: fn(&dyn IsEvent)) {
+        let key = Box::new(key) as Box<dyn IsEvent>;
         if self.events.contains_key(&key) {
             self.events.get_mut(&key).unwrap().push(value);
         } else {
@@ -23,64 +42,57 @@ impl<T: IsEvent> EventRegistry<T> {
         }
     }
 
-    pub fn fire(&self, key: T) {}
-}
-
-#[derive(Eq)]
-pub enum TestEvent {
-    OnStart,
-    Cont(i8),
-    OnQuit,
-}
-
-impl PartialEq for TestEvent {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Cont(_), Self::Cont(_)) => true,
-            (Self::OnStart, Self::OnStart) => true,
-            (Self::OnQuit, Self::OnQuit) => true,
-            _ => false,
+    pub fn fire<E: 'static + IsEvent>(&self, key: E) {
+        let key = Box::new(key) as Box<dyn IsEvent>;
+        if let Some(val) = self.events.get(&key) {
+            val.iter().for_each(|f| f(key.as_ref()));
         }
     }
 }
 
-impl Hash for TestEvent {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            Self::OnStart => state.write_i32(Self::OnStart),
-            _ => {}
+#[cfg(test)]
+mod test_event {
+    use super::*;
+
+    struct TestEvent {
+        a: isize,
+    }
+
+    impl TestEvent {
+        fn a(&mut self) {
+            self.a += 1;
         }
     }
-}
 
-impl IsEvent for TestEvent {}
+    impl IsEvent for TestEvent {}
 
-#[test]
-fn it_works() {
-    let mut event_reg = EventRegistry::<TestEvent>::new();
-    assert!(event_reg
-        .events
-        .insert(TestEvent::OnStart, Vec::<fn(&TestEvent)>::new())
-        .is_none());
-    event_reg
-        .events
-        .get_mut(&TestEvent::OnStart)
-        .unwrap()
-        .push(|e| {});
-    let (key, val) = event_reg.events.get_key_value(&TestEvent::OnStart).unwrap();
-    val.iter().for_each(|f| f(key));
-}
+    #[test]
+    fn it_works() {
+        let mut event_reg = EventRegistry::new();
+        event_reg.on(TestEvent { a: 0 }, |_| {});
+        let (key, val) = event_reg
+            .events
+            .get_key_value(&(Box::new(TestEvent { a: 1 }) as Box<dyn IsEvent>))
+            .unwrap();
+        val.iter().for_each(|f| f(key.as_ref()));
+    }
 
-#[test]
-fn is_custom_works() {
-    let mut event_reg = EventRegistry::<TestEvent>::new();
-    assert!(TestEvent::Cont(1) == TestEvent::Cont(2));
-    assert!(event_reg
-        .events
-        .insert(TestEvent::Cont(1), Vec::<fn(&TestEvent)>::new())
-        .is_none());
-    assert!(event_reg
-        .events
-        .insert(TestEvent::Cont(2), Vec::<fn(&TestEvent)>::new())
-        .is_none());
+    #[test]
+    fn is_custom_works() {
+        let mut event_reg = EventRegistry::new();
+        assert!(event_reg
+            .events
+            .insert(
+                Box::new(TestEvent { a: 0 }) as Box<dyn IsEvent>,
+                Vec::<fn(&dyn IsEvent)>::new()
+            )
+            .is_none());
+        assert!(event_reg
+            .events
+            .insert(
+                Box::new(TestEvent { a: 1 }) as Box<dyn IsEvent>,
+                Vec::<fn(&dyn IsEvent)>::new()
+            )
+            .is_some());
+    }
 }
