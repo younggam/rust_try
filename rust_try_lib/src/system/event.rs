@@ -1,26 +1,52 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::ops::{Deref, DerefMut};
 
 ///Implementor treated as Event. It will be distinguished only with its type.
 pub trait IsEvent: Any {}
 
+pub struct Listener<E: 'static + IsEvent> {
+    listener: Box<dyn FnMut(&E)>,
+}
+
+impl<E: 'static + IsEvent> Listener<E> {
+    pub fn new<F: 'static + FnMut(&E)>(listener: F) -> Self {
+        Self {
+            listener: Box::new(listener),
+        }
+    }
+}
+
+impl<E: 'static + IsEvent> Deref for Listener<E> {
+    type Target = dyn FnMut(&E);
+
+    fn deref(&self) -> &Self::Target {
+        &self.listener
+    }
+}
+
+impl<E: 'static + IsEvent> DerefMut for Listener<E> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.listener
+    }
+}
+
 pub struct EventListener {
-    raw_listener: *const fn(&dyn IsEvent),
+    boxed_listener: Box<dyn Any>,
 }
 
 impl EventListener {
-    pub fn new<E: 'static + IsEvent>(listener: fn(&E)) -> Self {
+    pub fn new<E: 'static + IsEvent, F: 'static + FnMut(&E)>(listener: F) -> Self {
         Self {
-            raw_listener: &listener as *const fn(&E),
+            boxed_listener: Box::new(Listener::new(listener)),
         }
     }
 
-    pub fn downcast<E: 'static + IsEvent>(&self) -> fn(&E) {
-        println!("a");
-        let a = unsafe { *self.raw_listener };
-        println!("b");
-        a
+    pub fn downcast<E: 'static + IsEvent>(&mut self) -> &mut Listener<E> {
+        (&mut self.boxed_listener)
+            .downcast_mut::<Listener<E>>()
+            .unwrap()
     }
 }
 
@@ -37,9 +63,13 @@ impl EventRegistry {
         }
     }
 
-    pub fn register<E: 'static + IsEvent>(&mut self, event: E, listener: fn(&E)) {
+    pub fn register<E: 'static + IsEvent, F: 'static + FnMut(&E)>(
+        &mut self,
+        event: E,
+        listener: F,
+    ) {
         let event = event.type_id();
-        let listener = EventListener::new::<E>(listener);
+        let listener = EventListener::new::<E, F>(listener);
 
         if self.events.contains_key(&event) {
             self.events.get_mut(&event).unwrap().push(listener);
@@ -48,9 +78,9 @@ impl EventRegistry {
         }
     }
 
-    pub fn fire<E: 'static + IsEvent>(&self, event: E) {
-        if let Some(listeners) = self.events.get(&event.type_id()) {
-            listeners.iter().for_each(|f| f.downcast::<E>()(&event));
+    pub fn fire<E: 'static + IsEvent>(&mut self, event: E) {
+        if let Some(listeners) = self.events.get_mut(&event.type_id()) {
+            listeners.iter_mut().for_each(|f| f.downcast::<E>()(&event));
         }
     }
 }
