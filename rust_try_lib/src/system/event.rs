@@ -1,51 +1,56 @@
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 ///Implementor treated as Event. It will be distinguished only with its type.
-pub trait IsEvent {}
+pub trait IsEvent: Any {}
 
-impl PartialEq for dyn IsEvent {
-    fn eq(&self, other: &Self) -> bool {
-        self.type_id() == other.type_id()
-    }
+pub struct EventListener {
+    raw_listener: *const fn(&dyn IsEvent),
 }
 
-impl Hash for dyn IsEvent {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.type_id().hash(state);
+impl EventListener {
+    pub fn new<E: 'static + IsEvent>(listener: fn(&E)) -> Self {
+        Self {
+            raw_listener: &listener as *const fn(&E),
+        }
+    }
+
+    pub fn downcast<E: 'static + IsEvent>(&self) -> fn(&E) {
+        println!("a");
+        let a = unsafe { *self.raw_listener };
+        println!("b");
+        a
     }
 }
-
-impl Eq for dyn IsEvent {}
 
 ///Literally registers events and behaviors
 ///Events should be impelement IsEvent
 pub struct EventRegistry {
-    events: HashMap<Box<dyn IsEvent>, Vec<fn(&dyn IsEvent)>>,
+    pub events: HashMap<TypeId, Vec<EventListener>>,
 }
 
 impl EventRegistry {
     pub fn new() -> Self {
         Self {
-            events: HashMap::<Box<dyn IsEvent>, Vec<fn(&dyn IsEvent)>>::new(),
+            events: HashMap::new(),
         }
     }
 
-    ///put event
-    pub fn on<E: 'static + IsEvent>(&mut self, key: E, value: fn(&dyn IsEvent)) {
-        let key = Box::new(key) as Box<dyn IsEvent>;
-        if self.events.contains_key(&key) {
-            self.events.get_mut(&key).unwrap().push(value);
+    pub fn register<E: 'static + IsEvent>(&mut self, event: E, listener: fn(&E)) {
+        let event = event.type_id();
+        let listener = EventListener::new::<E>(listener);
+
+        if self.events.contains_key(&event) {
+            self.events.get_mut(&event).unwrap().push(listener);
         } else {
-            self.events.insert(key, vec![value]);
+            self.events.insert(event, vec![listener]);
         }
     }
 
-    pub fn fire<E: 'static + IsEvent>(&self, key: E) {
-        let key = Box::new(key) as Box<dyn IsEvent>;
-        if let Some(val) = self.events.get(&key) {
-            val.iter().for_each(|f| f(key.as_ref()));
+    pub fn fire<E: 'static + IsEvent>(&self, event: E) {
+        if let Some(listeners) = self.events.get(&event.type_id()) {
+            listeners.iter().for_each(|f| f.downcast::<E>()(&event));
         }
     }
 }
@@ -69,12 +74,8 @@ mod test_event {
     #[test]
     fn it_works() {
         let mut event_reg = EventRegistry::new();
-        event_reg.on(TestEvent { a: 0 }, |_| {});
-        let (key, val) = event_reg
-            .events
-            .get_key_value(&(Box::new(TestEvent { a: 1 }) as Box<dyn IsEvent>))
-            .unwrap();
-        val.iter().for_each(|f| f(key.as_ref()));
+        event_reg.register(TestEvent { a: 0 }, |_| {});
+        event_reg.fire(TestEvent { a: 1 });
     }
 
     #[test]
@@ -82,17 +83,11 @@ mod test_event {
         let mut event_reg = EventRegistry::new();
         assert!(event_reg
             .events
-            .insert(
-                Box::new(TestEvent { a: 0 }) as Box<dyn IsEvent>,
-                Vec::<fn(&dyn IsEvent)>::new()
-            )
+            .insert(TestEvent { a: 0 }.type_id(), Vec::<EventListener>::new())
             .is_none());
         assert!(event_reg
             .events
-            .insert(
-                Box::new(TestEvent { a: 1 }) as Box<dyn IsEvent>,
-                Vec::<fn(&dyn IsEvent)>::new()
-            )
+            .insert(TestEvent { a: 1 }.type_id(), Vec::<EventListener>::new())
             .is_some());
     }
 }
