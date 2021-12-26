@@ -56,4 +56,5 @@ pub mod system {
 pub mod utils {
     leaf_mod! {pub macros}
     leaf_mod! {pub wrapper}
+    leaf_mod! {pub closure}
 }
