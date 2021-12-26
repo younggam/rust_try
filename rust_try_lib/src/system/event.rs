@@ -1,10 +1,10 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
-use crate::utils::{BoxedAny, ConsMut};
+use crate::utils::{BoxedAny, MutCapCons};
 
-///Literally registers events and listeners
-///Events should be impelement IsEvent
+///Literally registers events and correspond listeners.
+///events can be any type but 'static.
 pub struct EventRegistry {
     pub events: HashMap<TypeId, Vec<BoxedAny>>,
 }
@@ -17,7 +17,7 @@ impl EventRegistry {
     }
 
     pub fn register<E: Any, F: 'static + FnMut(&mut E)>(&mut self, event: TypeId, listener: F) {
-        let listener = BoxedAny::new(ConsMut::new(listener));
+        let listener = BoxedAny::new(MutCapCons::new(listener));
 
         if let Some(vec) = self.events.get_mut(&event) {
             vec.push(listener);
@@ -28,9 +28,10 @@ impl EventRegistry {
 
     pub fn fire<E: Any>(&mut self, mut event: E) {
         if let Some(listeners) = self.events.get_mut(&event.type_id()) {
-            listeners
-                .iter_mut()
-                .for_each(|f| f.downcast_mut::<ConsMut<E>>().unwrap()(&mut event));
+            listeners.iter_mut().for_each(|f| {
+                let f = f.downcast_mut::<MutCapCons<&mut E>>().unwrap();
+                f.call_mut(&mut event);
+            });
         }
     }
 }

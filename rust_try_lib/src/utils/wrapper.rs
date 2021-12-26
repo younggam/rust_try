@@ -29,6 +29,13 @@ impl<T> Once<T> {
 
 //
 
+pub struct Lazy<T, F = fn() -> T> {
+    initializer: F,
+    value: Option<T>,
+}
+
+//
+
 ///This wrapper assumes that value has ever initialized before using it.
 pub struct LazyManual<T>(Option<T>);
 

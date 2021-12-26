@@ -1,30 +1,43 @@
 //!Generalize closures
 
+use std::any::Any;
+use std::cell::Cell;
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
+///Cl
+pub trait Consumer {}
+
 ///Takes 1 mutable reference as argument and no return value
-pub struct ConsMut<T: 'static> {
-    cons: Box<dyn FnMut(&mut T)>,
+pub struct MutCapCons<A> {
+    cons: Box<dyn FnMut(A)>,
 }
 
-impl<T> ConsMut<T> {
-    pub fn new<F: 'static + FnMut(&mut T)>(cons: F) -> Self {
+impl<A> MutCapCons<A> {
+    pub fn new<F: 'static + FnMut(A)>(cons: F) -> Self {
         Self {
             cons: Box::new(cons),
         }
     }
-}
 
-impl<T> Deref for ConsMut<T> {
-    type Target = dyn FnMut(&mut T);
-
-    fn deref(&self) -> &Self::Target {
-        &self.cons
+    pub fn call_mut(&mut self, a: A) {
+        (&mut self.cons)(a)
     }
 }
 
-impl<T> DerefMut for ConsMut<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.cons
+#[cfg(test)]
+mod test {
+    use std::any::Any;
+
+    use super::*;
+
+    struct Test;
+    #[test]
+    fn is_unbox_takes_ownership() {
+        let h = Test {};
+        let a = Box::new(Test {});
+        let b = &*a;
+        a.as_ref();
+        b.type_id();
     }
 }
