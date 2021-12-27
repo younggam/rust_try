@@ -16,7 +16,7 @@ impl EventRegistry {
         }
     }
 
-    pub fn register<E: Any, F: 'static + FnMut(&mut E)>(&mut self, event: TypeId, listener: F) {
+    pub fn register<E: 'static, F: 'static + FnMut(&mut E)>(&mut self, event: TypeId, listener: F) {
         let listener = BoxedAny::new(MutCapMutCons::new(listener));
 
         if let Some(vec) = self.events.get_mut(&event) {
@@ -26,11 +26,13 @@ impl EventRegistry {
         }
     }
 
-    pub fn fire<E: Any>(&mut self, mut event: E) {
+    pub fn fire<E: 'static>(&mut self, mut event: E) {
         if let Some(listeners) = self.events.get_mut(&event.type_id()) {
-            listeners
-                .iter_mut()
-                .for_each(|f| f.downcast_mut::<MutCapMutCons<E>>().unwrap().get_mut()(&mut event));
+            listeners.iter_mut().for_each(|f| {
+                f.downcast_mut::<MutCapMutCons<E>>()
+                    .unwrap()
+                    .call_mut(&mut event)
+            });
         }
     }
 }
