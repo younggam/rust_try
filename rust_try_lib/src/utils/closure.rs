@@ -54,31 +54,59 @@ impl<A> Closure<&mut A, ()> for MutCapMutCons<A> {
     }
 }
 
-pub struct Cons<A, F: 'static + FnOnce(A)> {
-    cons: Box<dyn Any>,
+pub struct Cons<F: FnOnce(A) + ?Sized, A> {
+    cons: Box<F>,
     p1: PhantomData<A>,
-    p2: PhantomData<F>,
 }
 
-impl<A, F: 'static + FnOnce(A)> Cons<A, F> {
-    pub fn new(cons: F) -> Self {
+impl<A> Cons<dyn FnOnce(A), A> {
+    pub fn new<F: 'static + FnOnce(A)>(cons: F) -> Self {
         Self {
             cons: Box::new(cons),
             p1: PhantomData,
-            p2: PhantomData,
         }
     }
 
-    pub fn get(&self) -> &F {
-        self.cons.downcast_ref::<F>().unwrap()
+    pub fn get_once(self) -> *mut dyn FnOnce(A) {
+        Box::into_raw(self.cons)
+    }
+}
+
+impl<A> Cons<dyn FnMut(A), A> {
+    pub fn new<F: 'static + FnMut(A)>(cons: F) -> Self {
+        Self {
+            cons: Box::new(cons),
+            p1: PhantomData,
+        }
     }
 
-    pub fn get_mut(&mut self) -> &mut F {
-        self.cons.downcast_mut::<F>().unwrap()
+    pub fn get_mut(&mut self) -> &mut dyn FnMut(A) {
+        &mut self.cons
     }
 
-    pub fn get_once(self) -> F {
-        *self.cons.downcast::<F>().unwrap()
+    pub fn get_once(self) -> *mut dyn FnMut(A) {
+        Box::into_raw(self.cons)
+    }
+}
+
+impl<A> Cons<dyn Fn(A), A> {
+    pub fn new<F: 'static + Fn(A)>(cons: F) -> Self {
+        Self {
+            cons: Box::new(cons),
+            p1: PhantomData,
+        }
+    }
+
+    pub fn get(&self) -> &dyn Fn(A) {
+        &self.cons
+    }
+
+    pub fn get_mut(&mut self) -> &mut dyn Fn(A) {
+        &mut self.cons
+    }
+
+    pub fn get_once(self) -> *mut dyn Fn(A) {
+        Box::into_raw(self.cons)
     }
 }
 
@@ -104,11 +132,11 @@ mod test {
         let a = move |_h: &mut Test| {
             let _y = &x;
         };
-        let mut b = Cons::new(a);
+        let mut b = Cons::<dyn Fn(&mut Test), &mut Test>::new(a);
         b.get()(&mut asdf);
         b.get()(&mut asdf);
         b.get_mut()(&mut asdf);
-        b.get_once()(&mut asdf);
+        //b.get_once()(&mut asdf);
     }
 
     #[test]
@@ -121,6 +149,7 @@ mod test {
         let mut b = Cons::new(a);
         b.get_mut()(&mut asdf);
         b.get_mut()(&mut asdf);
+        //b.get_once()(&mut asdf);
     }
 
     #[test]
@@ -131,6 +160,6 @@ mod test {
             let _y = x;
         };
         let b = Cons::new(a);
-        b.get_once()(&mut asdf);
+        //b.get_once()(&mut asdf);
     }
 }
