@@ -29,7 +29,7 @@ impl<T> MutCapProv<T> {}
 
 ///Takes 1 mutable reference as argument and no return value
 pub struct MutCapMutCons<A: 'static> {
-    cons: Box<dyn FnMut(&mut A)>,
+    pub cons: Box<dyn FnMut(&mut A)>,
 }
 
 impl<A> MutCapMutCons<A> {
@@ -56,19 +56,19 @@ impl<A> Closure<&mut A, ()> for MutCapMutCons<A> {
 
 pub struct Cons<F: FnOnce(A) + ?Sized, A> {
     cons: Box<F>,
-    p1: PhantomData<A>,
+    p: PhantomData<A>,
 }
 
 impl<A> Cons<dyn FnOnce(A), A> {
     pub fn new<F: 'static + FnOnce(A)>(cons: F) -> Self {
         Self {
             cons: Box::new(cons),
-            p1: PhantomData,
+            p: PhantomData,
         }
     }
 
-    pub fn get_once(self) -> *mut dyn FnOnce(A) {
-        Box::into_raw(self.cons)
+    pub fn call_once(self, a: A) {
+        (self.cons)(a)
     }
 }
 
@@ -76,16 +76,16 @@ impl<A> Cons<dyn FnMut(A), A> {
     pub fn new<F: 'static + FnMut(A)>(cons: F) -> Self {
         Self {
             cons: Box::new(cons),
-            p1: PhantomData,
+            p: PhantomData,
         }
     }
 
-    pub fn get_mut(&mut self) -> &mut dyn FnMut(A) {
-        &mut self.cons
+    pub fn call_mut(&mut self, a: A) {
+        (self.cons)(a)
     }
 
-    pub fn get_once(self) -> *mut dyn FnMut(A) {
-        Box::into_raw(self.cons)
+    pub fn call_once(mut self, a: A) {
+        (self.cons)(a)
     }
 }
 
@@ -93,20 +93,20 @@ impl<A> Cons<dyn Fn(A), A> {
     pub fn new<F: 'static + Fn(A)>(cons: F) -> Self {
         Self {
             cons: Box::new(cons),
-            p1: PhantomData,
+            p: PhantomData,
         }
     }
 
-    pub fn get(&self) -> &dyn Fn(A) {
-        &self.cons
+    pub fn call(&self, a: A) {
+        (self.cons)(a)
     }
 
-    pub fn get_mut(&mut self) -> &mut dyn Fn(A) {
-        &mut self.cons
+    pub fn call_mut(&mut self, a: A) {
+        (self.cons)(a)
     }
 
-    pub fn get_once(self) -> *mut dyn Fn(A) {
-        Box::into_raw(self.cons)
+    pub fn call_once(self, a: A) {
+        (self.cons)(a)
     }
 }
 
@@ -132,11 +132,8 @@ mod test {
         let a = move |_h: &mut Test| {
             let _y = &x;
         };
-        let mut b = Cons::<dyn Fn(&mut Test), &mut Test>::new(a);
-        b.get()(&mut asdf);
-        b.get()(&mut asdf);
-        b.get_mut()(&mut asdf);
-        //b.get_once()(&mut asdf);
+        let mut b = Cons::<dyn Fn(_), &mut Test>::new(a);
+        b.call(&mut asdf);
     }
 
     #[test]
@@ -146,10 +143,8 @@ mod test {
         let a = move |_h: &mut Test| {
             let _y = &mut x;
         };
-        let mut b = Cons::new(a);
-        b.get_mut()(&mut asdf);
-        b.get_mut()(&mut asdf);
-        //b.get_once()(&mut asdf);
+        let mut b = Cons::<dyn FnMut(_), &mut Test>::new(a);
+        b.call_mut(&mut asdf);
     }
 
     #[test]
@@ -159,7 +154,7 @@ mod test {
         let a = move |_h: &mut Test| {
             let _y = x;
         };
-        let b = Cons::new(a);
-        //b.get_once()(&mut asdf);
+        let b = Cons::<dyn FnOnce(_), &mut Test>::new(a);
+        b.call_once(&mut asdf);
     }
 }
