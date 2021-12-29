@@ -1,7 +1,8 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
-use crate::utils::{BoxedAny, Closure, MutCapMutCons};
+use crate::utils::BoxedAny;
+use crate::*;
 
 ///Literally registers events and correspond listeners.
 ///events can be any type but 'static.
@@ -17,7 +18,7 @@ impl EventRegistry {
     }
 
     pub fn register<E: 'static, F: 'static + FnMut(&mut E)>(&mut self, event: TypeId, listener: F) {
-        let listener = BoxedAny::new(MutCapMutCons::new(listener));
+        let listener = BoxedAny::new(box_as!(listener, dyn FnMut(&mut E)));
 
         if let Some(vec) = self.events.get_mut(&event) {
             vec.push(listener);
@@ -28,11 +29,9 @@ impl EventRegistry {
 
     pub fn fire<E: 'static>(&mut self, mut event: E) {
         if let Some(listeners) = self.events.get_mut(&event.type_id()) {
-            listeners.iter_mut().for_each(|f| {
-                f.downcast_mut::<MutCapMutCons<E>>()
-                    .unwrap()
-                    .call_mut(&mut event)
-            });
+            listeners
+                .iter_mut()
+                .for_each(|f| f.downcast_mut::<Box<dyn FnMut(&mut E)>>().unwrap()(&mut event));
         }
     }
 }

@@ -56,3 +56,22 @@ macro_rules! lazy_construct{
         }
     };
 }
+
+/**I can't understand why.
+If reference become generics that for parameters of closure,
+the closure wants argument live longer than closure itself.
+When reference explicitly set as parameters of closure,
+now the closure doesn't care how long argmuent lives.
+
+
+I have figured out it is related with for<'r> Fn(&'a T).
+But there's no way to identify type parameter with closures's arguments type parameter.
+
+
+This macro kinda alternative for all tries to generalize closure*/
+#[macro_export]
+macro_rules! box_as {
+    ($i:ident, $T:ty) => {
+        Box::new($i) as Box<$T>
+    };
+}
