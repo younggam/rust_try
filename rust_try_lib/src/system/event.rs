@@ -17,8 +17,12 @@ impl EventRegistry {
         }
     }
 
-    pub fn register<E: 'static, F: 'static + FnMut(&mut E)>(&mut self, event: TypeId, listener: F) {
-        let listener = BoxedAny::new(box_as!(listener, dyn FnMut(&mut E)));
+    pub fn register<E, F>(&mut self, event: TypeId, listener: F)
+    where
+        E: 'static,
+        F: 'static + FnMut(&mut E) + Send,
+    {
+        let listener = BoxedAny::new(box_as!(listener, dyn FnMut(&mut E) + Send));
 
         if let Some(vec) = self.events.get_mut(&event) {
             vec.push(listener);
@@ -32,6 +36,31 @@ impl EventRegistry {
             listeners
                 .iter_mut()
                 .for_each(|f| f.downcast_mut::<Box<dyn FnMut(&mut E)>>().unwrap()(&mut event));
+        }
+    }
+
+    pub fn clear_all(&mut self) {
+        self.events.clear();
+    }
+
+    pub fn clear_list(&mut self, list: &Vec<TypeId>) {
+        for item in list {
+            self.events.remove(item);
+        }
+    }
+
+    pub fn clear_exclude(&mut self, list: &Vec<TypeId>) {
+        let mut temp = Vec::new();
+        for item in list {
+            if let Some(entry) = self.events.remove_entry(item) {
+                temp.push(entry);
+            }
+        }
+
+        self.events.clear();
+
+        for entry in temp {
+            self.events.insert(entry.0, entry.1);
         }
     }
 }

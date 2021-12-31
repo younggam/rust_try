@@ -29,12 +29,10 @@ impl<T> Once<T> {
 
 //
 
-pub struct Lazy<T, F = fn() -> T> {
-    initializer: F,
-    value: Option<T>,
-}
-
-//
+// pub struct Lazy<T, F = fn() -> T> {
+//     inner: Option<T>,
+//     initializer: Option<F>,
+// }
 
 ///This wrapper assumes that value has ever initialized before using it.
 pub struct LazyManual<T>(Option<T>);
@@ -87,11 +85,11 @@ impl<T> DerefMut for LazyManual<T> {
 
 ///This wrapper provides kinda wildcard type.
 pub struct BoxedAny {
-    boxed: Box<dyn Any>,
+    boxed: Box<dyn Any + Send>,
 }
 
 impl BoxedAny {
-    pub fn new<T: Any>(x: T) -> Self {
+    pub fn new<T: Any + Send>(x: T) -> Self {
         Self { boxed: Box::new(x) }
     }
 
