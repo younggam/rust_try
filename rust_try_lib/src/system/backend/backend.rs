@@ -1,6 +1,6 @@
-///This is interface for registering Main's logic
-///Concrete type of this interface should implement main's logic depends on specific crate
-pub trait Control {
+///This is interface for application and concrete implementation
+///Concrete type of this interface should implement inner logic depends on specific crate
+pub trait Backend {
     ///provides executation of assembled logics
     fn run(self);
 

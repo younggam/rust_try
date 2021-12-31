@@ -12,6 +12,7 @@ winit = { version = "0.25.0", optional = true }
 shaderc = "0.7.3"
 image = { version = "0.23.14", default-features = false, features = ["jpeg", "png"] }
 tobj = "3.2.0"
+lazy_static = "1.4.0"
 
 [features]
 default = ["vulkan", "winit"]

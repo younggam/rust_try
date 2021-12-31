@@ -1,10 +1,10 @@
 use crate::utils::Once;
 
-use super::Control;
+use super::Backend;
 
 use winit::*;
 
-pub struct WinitControl {
+pub struct WinitBackend {
     event_loop: Once<event_loop::EventLoop<()>>,
     start_task: Option<fn()>,
     reload_task: Option<fn()>,
@@ -13,7 +13,7 @@ pub struct WinitControl {
     quit_task: Option<fn()>,
 }
 
-impl WinitControl {
+impl WinitBackend {
     pub fn new() -> Self {
         Self {
             event_loop: Once::new(event_loop::EventLoop::new()),
@@ -26,7 +26,7 @@ impl WinitControl {
     }
 }
 
-impl Control for WinitControl {
+impl Backend for WinitBackend {
     fn run(mut self) {
         if let Some(ref f) = self.start_task {
             f();
