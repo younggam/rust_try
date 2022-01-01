@@ -1,9 +1,8 @@
 mod application;
 
-mod core;
+mod renderer;
 
 fn main() {
-    let mut app = application::Application::new();
-    app.initialize();
+    let app = application::Application::new();
     app.run();
 }

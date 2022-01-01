@@ -2,13 +2,15 @@ use crate::*;
 use graphics::elements::Vertex;
 use math::*;
 
-use super::Core;
+use super::RendererCore;
 
 use std::ffi::{c_void, CStr, CString};
 use std::io::Cursor;
 use std::os::raw::c_char;
 
 use ash::vk;
+
+use raw_window_handle::HasRawWindowHandle;
 
 struct QueueFamilyIndices {
     graphics_family: Option<u32>,
@@ -95,11 +97,10 @@ const INDICES: [u16; 12] = [
 */
 
 lazy_struct! {
-    pub struct CoreVulkan {
+    pub struct CoreAsh {
         entry: ash::Entry,
         start_time: std::time::Instant,
 
-        -event_loop: utils::Once<winit::event_loop::EventLoop<()>>,
         -window: winit::window::Window,
 
         -instance: ash::Instance,
@@ -169,9 +170,7 @@ lazy_struct! {
     }
 }
 
-impl CoreVulkan {
-    const WINDOW_SIZE: winit::dpi::LogicalSize<u32> = winit::dpi::LogicalSize::new(800, 600);
-
+impl CoreAsh {
     const MODEL_PATH: &'static str = "assets/models/viking_room.obj";
     const TEXTURE_PATH: &'static str = "assets/textures/viking_room.png";
 
@@ -186,10 +185,9 @@ impl CoreVulkan {
     pub fn new() -> Self {
         lazy_construct! {
             Self {
-                entry: unsafe { ash::Entry::new().unwrap() },
+                entry: ash::Entry::linked(),
                 start_time: std::time::Instant::now(),
 
-                event_loop,
                 window,
 
                 instance,
@@ -260,29 +258,14 @@ impl CoreVulkan {
         }
     }
 
-    fn init_window(&mut self) {
-        let event_loop = winit::event_loop::EventLoop::new();
-
-        self.window.init(
-            winit::window::WindowBuilder::new()
-                .with_title("Vulkan")
-                .with_inner_size(Self::WINDOW_SIZE)
-                .with_resizable(true)
-                .build(&event_loop)
-                .unwrap(),
-        );
-
-        self.event_loop.init(utils::Once::new(event_loop));
-    }
-
     pub fn framebuffer_resize_callback(&mut self) {
         self.framebuffer_resized = true;
     }
 
-    fn init_vulkan(&mut self) {
-        self.create_instance();
+    fn setup(&mut self, window: &dyn HasRawWindowHandle) {
+        self.create_instance(window);
         self.setup_debug_messenger();
-        self.create_surface();
+        self.create_surface(window);
         self.pick_physical_device();
         self.create_logical_device();
         self.create_swapchain();
@@ -370,7 +353,7 @@ impl CoreVulkan {
         self.framebuffer_resized = false;
     }
 
-    fn create_instance(&mut self) {
+    fn create_instance(&mut self, window: &dyn HasRawWindowHandle) {
         if Self::ENABLE_VALIDATION_LAYERS && !self.check_validation_layer_support() {
             panic!("Validation layers requested, but not available!");
         }
@@ -385,7 +368,7 @@ impl CoreVulkan {
             .engine_version(vk::make_api_version(0, 1, 0, 0))
             .api_version(vk::API_VERSION_1_0);
 
-        let extensions = self.get_required_extensions();
+        let extensions = self.get_required_extensions(window);
         let mut create_info = vk::InstanceCreateInfo::builder()
             .application_info(&app_info)
             .enabled_extension_names(&extensions);
@@ -414,10 +397,15 @@ impl CoreVulkan {
             .message_severity(
                 // vk::DebugUtilsMessageSeverityFlagsEXT::all()
                 //     ^ vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
-                vk::DebugUtilsMessageSeverityFlagsEXT::all()
-                    ^ vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
+                vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
             )
-            .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
+            .message_type(
+                vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+            )
             .pfn_user_callback(Some(Self::debug_callback))
             .build()
     }
@@ -442,13 +430,13 @@ impl CoreVulkan {
         }
     }
 
-    fn create_surface(&mut self) {
+    fn create_surface(&mut self, window: &dyn HasRawWindowHandle) {
         self.surface_loader.init(ash::extensions::khr::Surface::new(
             &self.entry,
             &self.instance,
         ));
         self.surface = unsafe {
-            ash_window::create_surface(&self.entry, &self.instance, self.window.get(), None)
+            ash_window::create_surface(&self.entry, &self.instance, window, None)
                 .expect("failed to create window surface!")
         };
     }
@@ -770,7 +758,12 @@ impl CoreVulkan {
             .depth_bounds_test_enable(false);
 
         let color_blend_attachment = [vk::PipelineColorBlendAttachmentState::builder()
-            .color_write_mask(vk::ColorComponentFlags::all())
+            .color_write_mask(
+                vk::ColorComponentFlags::R
+                    | vk::ColorComponentFlags::G
+                    | vk::ColorComponentFlags::B
+                    | vk::ColorComponentFlags::A,
+            )
             .build()];
 
         let color_blending =
@@ -2160,8 +2153,8 @@ impl CoreVulkan {
         indices
     }
 
-    fn get_required_extensions(&self) -> Vec<*const c_char> {
-        let mut extensions = ash_window::enumerate_required_extensions(self.window.get())
+    fn get_required_extensions(&self, window: &dyn HasRawWindowHandle) -> Vec<*const c_char> {
+        let mut extensions = ash_window::enumerate_required_extensions(window)
             .unwrap()
             .iter()
             .map(|name| name.as_ptr())
@@ -2211,7 +2204,7 @@ impl CoreVulkan {
     }
 }
 
-impl Drop for CoreVulkan {
+impl Drop for CoreAsh {
     fn drop(&mut self) {
         println!("Dropping..");
         self.cleanup_swapchain();
@@ -2258,10 +2251,9 @@ impl Drop for CoreVulkan {
     }
 }
 
-impl Core for CoreVulkan {
-    fn initialize(&mut self) {
-        self.init_window();
-        self.init_vulkan();
+impl RendererCore for CoreAsh {
+    fn init(&mut self, window: &dyn HasRawWindowHandle) {
+        self.setup(window);
     }
 
     fn render(&mut self) {

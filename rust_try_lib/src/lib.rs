@@ -30,7 +30,11 @@ pub mod graphics {
         leaf_mod! {pub vertex}
     }
 
-    leaf_mod! {pub renderer}
+    pub mod window {
+        leaf_mod! {pub window}
+        #[cfg(feature = "winit")]
+        leaf_mod! {pub winit}
+    }
 }
 
 pub mod math {
@@ -39,8 +43,8 @@ pub mod math {
 }
 
 pub mod system {
-    pub mod backend {
-        leaf_mod! {pub backend}
+    pub mod core {
+        leaf_mod! {pub core}
 
         #[cfg(feature = "winit")]
         leaf_mod! {pub winit}
