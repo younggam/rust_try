@@ -33,7 +33,9 @@ impl ApplicationWinit {
 
     fn init_globals(&self) {
         lazy_static::initialize(&globals::EVENT_REGISTRY);
-        //rust_try_lib::globals::APPLICATION_WINIT.init(std::sync::Mutex::new(self));
+        println!("hi");
+        globals::APPLICATION_WINIT.init(std::sync::Mutex::new(crate::utils::UnsafeRef::new(self)));
+        println!("dead");
     }
 }
 

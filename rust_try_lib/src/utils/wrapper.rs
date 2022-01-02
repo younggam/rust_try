@@ -100,3 +100,54 @@ impl BoxedAny {
         (&mut self.boxed).downcast_mut::<T>()
     }
 }
+
+///ignores lifetime of reference
+pub struct UnsafeRef<T>(*mut T);
+
+impl<T> UnsafeRef<T> {
+    pub fn new(item: &T) -> Self {
+        Self(item as *const T as *mut T)
+    }
+
+    ///Assumes that value has initialized before use.
+    pub fn get(&self) -> &T {
+        unsafe { &*self.0 }
+    }
+
+    ///Same as get
+    pub fn get_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.0 }
+    }
+}
+
+impl<T> Deref for UnsafeRef<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.get()
+    }
+}
+
+impl<T> DerefMut for UnsafeRef<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.get_mut()
+    }
+}
+
+unsafe impl<T: Sync> Sync for UnsafeRef<T> {}
+unsafe impl<T: Send> Send for UnsafeRef<T> {}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    struct Test;
+    impl Test{
+        fn a(&self){10;}
+    }
+    #[test]
+    fn what() {
+        let a = Test {};
+        let b = UnsafeRef::new(&a);
+        let c=b.get();
+        c.a();
+    }
+}

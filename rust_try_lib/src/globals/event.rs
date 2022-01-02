@@ -33,9 +33,9 @@ impl EventRegistry {
 
     pub fn fire<E: 'static>(&mut self, mut event: E) {
         if let Some(listeners) = self.events.get_mut(&event.type_id()) {
-            listeners
-                .iter_mut()
-                .for_each(|f| f.downcast_mut::<Box<dyn FnMut(&mut E)>>().unwrap()(&mut event));
+            listeners.iter_mut().for_each(|f| {
+                f.downcast_mut::<Box<dyn FnMut(&mut E) + Send>>().unwrap()(&mut event)
+            });
         }
     }
 

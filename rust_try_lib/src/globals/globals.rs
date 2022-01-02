@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use super::*;
 use crate::application::ApplicationWinit;
-use crate::utils::LazyManual;
+use crate::utils::{LazyManual, UnsafeRef};
 
 //No variations
 lazy_static! {
@@ -10,4 +10,4 @@ lazy_static! {
 }
 
 #[cfg(feature = "winit")]
-pub static APPLICATION_WINIT: LazyManual<Mutex<ApplicationWinit>> = LazyManual::new();
+pub static APPLICATION_WINIT: LazyManual<Mutex<UnsafeRef<ApplicationWinit>>> = LazyManual::new();
