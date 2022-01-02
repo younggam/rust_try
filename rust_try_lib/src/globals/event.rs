@@ -11,7 +11,7 @@ pub struct EventRegistry {
 }
 
 impl EventRegistry {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             events: HashMap::new(),
         }

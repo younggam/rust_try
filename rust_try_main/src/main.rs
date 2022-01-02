@@ -1,8 +1,13 @@
-mod application;
+use rust_try_lib::application::*;
 
-mod renderer;
+use modules::core::CoreModule;
 
 fn main() {
-    let app = application::Application::new();
+    let app = ApplicationWinit::new(CoreModule {});
     app.run();
+}
+
+mod modules {
+    pub mod core;
+    // pub mod renderer;
 }

@@ -18,6 +18,18 @@ macro_rules! leaf_mod{
 #[macro_use]
 extern crate lazy_static;
 
+pub mod application {
+    leaf_mod! {pub application}
+    leaf_mod! {pub module}
+    #[cfg(feature = "winit")]
+    leaf_mod! {pub winit}
+}
+
+pub mod globals {
+    leaf_mod! {pub event}
+    leaf_mod! {pub globals}
+}
+
 pub mod graphics {
     pub mod core {
         #[cfg(all(feature = "ash", feature = "winit"))]
@@ -42,20 +54,7 @@ pub mod math {
     leaf_mod! {pub matrix}
 }
 
-pub mod system {
-    pub mod core {
-        leaf_mod! {pub core}
-
-        #[cfg(feature = "winit")]
-        leaf_mod! {pub winit}
-    }
-
-    leaf_mod! {pub event}
-}
-
 pub mod utils {
     leaf_mod! {pub macros}
     leaf_mod! {pub wrapper}
 }
-
-leaf_mod! {pub globals}
