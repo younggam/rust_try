@@ -30,36 +30,30 @@ impl<T> Once<T> {
 //
 
 ///This wrapper assumes that value has ever initialized before using it.
-pub struct LazyManual<T>(Option<T>);
+pub struct LazyManual<T>(*mut T);
 
 impl<T> LazyManual<T> {
     pub const fn new() -> Self {
-        Self(None)
+        Self(std::mem::align_of::<T>() as *mut T)
     }
 
     /**initializes value
     \n
     \ndoes nothing when value has already initialized*/
-    pub fn init(&mut self, item: T) {
-        if let None = self.0 {
-            self.0 = Some(item);
+    pub fn init(&self, item: T) {
+        unsafe {
+            std::ptr::replace(self.0, item);
         }
     }
 
     ///Assumes that value has initialized before use.
     pub fn get(&self) -> &T {
-        match self.0 {
-            None => unreachable!("It has never initialized"),
-            Some(ref item) => item,
-        }
+        unsafe { &*self.0 }
     }
 
     ///Same as get
     pub fn get_mut(&mut self) -> &mut T {
-        match self.0 {
-            None => unreachable!("It has never initialized"),
-            Some(ref mut item) => item,
-        }
+        unsafe { &mut *self.0 }
     }
 }
 
@@ -75,6 +69,8 @@ impl<T> DerefMut for LazyManual<T> {
         self.get_mut()
     }
 }
+
+unsafe impl<T: Sync> Sync for LazyManual<T> {}
 
 //
 

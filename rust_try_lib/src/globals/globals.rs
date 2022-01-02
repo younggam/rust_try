@@ -1,14 +1,13 @@
 use std::sync::Mutex;
 
 use super::*;
+use crate::application::ApplicationWinit;
+use crate::utils::LazyManual;
 
-use lazy_static::initialize;
-
+//No variations
 lazy_static! {
     pub static ref EVENT_REGISTRY: Mutex<EventRegistry> = Mutex::new(EventRegistry::new());
 }
 
-///no effect on multiple calls
-pub fn init_globals() {
-    initialize(&EVENT_REGISTRY);
-}
+#[cfg(feature = "winit")]
+pub static APPLICATION_WINIT: LazyManual<Mutex<ApplicationWinit>> = LazyManual::new();
