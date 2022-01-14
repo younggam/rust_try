@@ -13,8 +13,9 @@ pub struct ApplicationWinit {
     window: WindowWinit,
     event_loop: Cell<Option<EventLoop<()>>>,
 
-    //user implementation
+    //common implementation
     core: Box<dyn Module>,
+    modules: Vec<Box<dyn Module>>,
     is_running: bool,
 }
 
@@ -27,15 +28,20 @@ impl ApplicationWinit {
             event_loop: Cell::new(Some(event_loop)),
 
             core: Box::new(core),
+            modules: Vec::new(),
             is_running: true,
         }
     }
 
     fn init_globals(&self) {
         lazy_static::initialize(&globals::EVENT_REGISTRY);
-        println!("hi");
         globals::APPLICATION_WINIT.init(std::sync::Mutex::new(crate::utils::UnsafeRef::new(self)));
-        println!("dead");
+    }
+
+    fn operate(&mut self, op: fn(&mut (dyn Module + 'static))) {
+        for module in self.modules.iter_mut() {
+            op(module.as_mut());
+        }
     }
 }
 
@@ -66,7 +72,10 @@ impl Application for ApplicationWinit {
                     Event::UserEvent(_) => {}
                     Event::Suspended => {}
                     Event::Resumed => {}
-                    Event::MainEventsCleared => {}
+                    Event::MainEventsCleared => {
+                        self.core.update();
+                        self.operate(Module::update);
+                    }
                     Event::RedrawRequested(_) => {}
                     Event::RedrawEventsCleared => {}
                     Event::LoopDestroyed => self.core.on_exit(),

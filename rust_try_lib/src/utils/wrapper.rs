@@ -3,57 +3,63 @@
 use std::any::Any;
 use std::ops::{Deref, DerefMut};
 
-///This wrapper assumes that value won't be used more than twice except reference.
-pub struct Once<T>(Option<T>);
+#[repr(transparent)]
+struct LazyInner<T>(Option<T>);
 
-impl<T> Once<T> {
-    pub const fn new(item: T) -> Self {
-        Self(Some(item))
+impl<T> LazyInner<T> {
+    const fn new() -> Self {
+        Self(None)
     }
 
-    /*pub fn consume_check(&mut self) -> Result<T, bool> {
-        match self.0.take() {
-            Some(item) => Ok(item),
-            None => Err(false),
-        }
-    }*/
+    const fn get(&self) -> &Option<T> {
+        &self.0
+    }
 
-    ///Assumes value has never used, and takes ownership of value.
-    pub fn consume(&mut self) -> T {
-        match self.0.take() {
-            Some(item) => item,
-            None => unreachable!("It has already consumed!"),
-        }
+    fn get_mut(&mut self) -> &mut Option<T> {
+        &mut self.0
+    }
+
+    const fn get_ptr_mut(&self) -> *mut Option<T> {
+        self as *const Self as *const Option<T> as *mut Option<T>
+    }
+
+    fn replace(&self, value: T) -> Option<T> {
+        std::mem::replace(unsafe { &mut *self.get_ptr_mut() }, Some(value))
     }
 }
 
-//
-
 ///This wrapper assumes that value has ever initialized before using it.
-pub struct LazyManual<T>(*mut T);
+#[repr(transparent)]
+pub struct LazyManual<T>(LazyInner<T>);
 
 impl<T> LazyManual<T> {
     pub const fn new() -> Self {
-        Self(std::mem::align_of::<T>() as *mut T)
+        Self(LazyInner::new())
+    }
+
+    const fn inited(&self) -> bool {
+        self.0.get().is_some()
     }
 
     /**initializes value
     \n
     \ndoes nothing when value has already initialized*/
     pub fn init(&self, item: T) {
-        unsafe {
-            std::ptr::replace(self.0, item);
+        if self.inited() {
+            return;
         }
+
+        self.0.replace(item);
     }
 
     ///Assumes that value has initialized before use.
     pub fn get(&self) -> &T {
-        unsafe { &*self.0 }
+        self.0.get().as_ref().unwrap()
     }
 
     ///Same as get
     pub fn get_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.0 }
+        self.0.get_mut().as_mut().unwrap()
     }
 }
 
@@ -70,6 +76,9 @@ impl<T> DerefMut for LazyManual<T> {
     }
 }
 
+///Doesn't leak pointer access when sent to other thread
+unsafe impl<T: Send> Send for LazyManual<T> {}
+///Has inner mutability, so rigidly this is not Sync. Use init only in main thread.
 unsafe impl<T: Sync> Sync for LazyManual<T> {}
 
 //
@@ -133,21 +142,25 @@ impl<T> DerefMut for UnsafeRef<T> {
     }
 }
 
+///Doesn't leak pointer access when sent to other thread
 unsafe impl<T: Sync> Sync for UnsafeRef<T> {}
+///No inner mutabiliy.
 unsafe impl<T: Send> Send for UnsafeRef<T> {}
 
 #[cfg(test)]
 mod test {
     use super::*;
     struct Test;
-    impl Test{
-        fn a(&self){10;}
+    impl Test {
+        fn a(&self) {
+            10;
+        }
     }
     #[test]
     fn what() {
         let a = Test {};
         let b = UnsafeRef::new(&a);
-        let c=b.get();
+        let c = b.get();
         c.a();
     }
 }
