@@ -49,14 +49,6 @@ impl ApplicationWinit {
 
         self.core.update();
         self.operate(Module::update);
-
-        println!(
-            "is_pressed: {}, is_released: {}, just_pressed: {}, just_released: {}",
-            globals::KEYBOARD.is_pressed(globals::KeyCode::Q),
-            globals::KEYBOARD.is_released(globals::KeyCode::Q),
-            globals::KEYBOARD.just_pressed(globals::KeyCode::Q),
-            globals::KEYBOARD.just_released(globals::KeyCode::Q)
-        );
     }
 
     fn operate(&mut self, op: fn(&mut (dyn Module + 'static))) {
