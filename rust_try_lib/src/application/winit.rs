@@ -34,8 +34,29 @@ impl ApplicationWinit {
     }
 
     fn init_globals(&self) {
+        lazy_static::initialize(&globals::TIME);
+        lazy_static::initialize(&globals::KEYBOARD);
         lazy_static::initialize(&globals::EVENT_REGISTRY);
-        globals::APPLICATION_WINIT.init(std::sync::Mutex::new(crate::utils::UnsafeRef::new(self)));
+        globals::APPLICATION_WINIT.init(crate::utils::UnsafeRef::new(self));
+    }
+
+    fn pre_update(&mut self) {
+        unsafe { globals::KEYBOARD.get_mut().pre_update() };
+    }
+
+    fn update(&mut self) {
+        unsafe { globals::TIME.get_mut().update() };
+
+        self.core.update();
+        self.operate(Module::update);
+
+        println!(
+            "is_pressed: {}, is_released: {}, just_pressed: {}, just_released: {}",
+            globals::KEYBOARD.is_pressed(globals::KeyCode::Q),
+            globals::KEYBOARD.is_released(globals::KeyCode::Q),
+            globals::KEYBOARD.just_pressed(globals::KeyCode::Q),
+            globals::KEYBOARD.just_released(globals::KeyCode::Q)
+        );
     }
 
     fn operate(&mut self, op: fn(&mut (dyn Module + 'static))) {
@@ -62,20 +83,21 @@ impl Application for ApplicationWinit {
                 match event {
                     Event::NewEvents(start_cause) => match start_cause {
                         StartCause::Init => self.init(),
+                        StartCause::Poll => self.pre_update(),
                         _ => {}
                     },
                     Event::WindowEvent { event, .. } => match event {
                         WindowEvent::CloseRequested => self.exit(),
+                        WindowEvent::KeyboardInput { input, .. } => {
+                            unsafe { globals::KEYBOARD.get_mut().handle_input(input) };
+                        }
                         _ => {}
                     },
                     Event::DeviceEvent { .. } => {}
                     Event::UserEvent(_) => {}
                     Event::Suspended => {}
                     Event::Resumed => {}
-                    Event::MainEventsCleared => {
-                        self.core.update();
-                        self.operate(Module::update);
-                    }
+                    Event::MainEventsCleared => self.update(),
                     Event::RedrawRequested(_) => {}
                     Event::RedrawEventsCleared => {}
                     Event::LoopDestroyed => self.core.on_exit(),
@@ -87,8 +109,10 @@ impl Application for ApplicationWinit {
             });
     }
 
-    fn exit(&mut self) {
-        self.is_running = false;
+    fn exit(&self) {
+        //SAFETY
+        //Mutual call or access doesn't affect on its purpose
+        unsafe { &mut *(self as *const Self as *mut Self) }.is_running = false;
     }
 }
 

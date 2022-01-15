@@ -28,6 +28,8 @@ pub mod application {
 pub mod globals {
     leaf_mod! {pub event}
     leaf_mod! {pub globals}
+    leaf_mod! {pub input}
+    leaf_mod! {pub time}
 }
 
 pub mod graphics {

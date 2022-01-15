@@ -1,44 +1,20 @@
 //!Various wrappers for various purposes
 
 use std::any::Any;
+use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
-
-#[repr(transparent)]
-struct LazyInner<T>(Option<T>);
-
-impl<T> LazyInner<T> {
-    const fn new() -> Self {
-        Self(None)
-    }
-
-    const fn get(&self) -> &Option<T> {
-        &self.0
-    }
-
-    fn get_mut(&mut self) -> &mut Option<T> {
-        &mut self.0
-    }
-
-    const fn get_ptr_mut(&self) -> *mut Option<T> {
-        self as *const Self as *const Option<T> as *mut Option<T>
-    }
-
-    fn replace(&self, value: T) -> Option<T> {
-        std::mem::replace(unsafe { &mut *self.get_ptr_mut() }, Some(value))
-    }
-}
 
 ///This wrapper assumes that value has ever initialized before using it.
 #[repr(transparent)]
-pub struct LazyManual<T>(LazyInner<T>);
+pub struct LazyManual<T>(UnsafeCell<Option<T>>);
 
 impl<T> LazyManual<T> {
     pub const fn new() -> Self {
-        Self(LazyInner::new())
+        Self(UnsafeCell::new(None))
     }
 
-    const fn inited(&self) -> bool {
-        self.0.get().is_some()
+    fn inited(&self) -> bool {
+        unsafe { &*self.0.get() }.is_some()
     }
 
     /**initializes value
@@ -49,12 +25,12 @@ impl<T> LazyManual<T> {
             return;
         }
 
-        self.0.replace(item);
+        *unsafe { &mut *self.0.get() } = Some(item);
     }
 
     ///Assumes that value has initialized before use.
     pub fn get(&self) -> &T {
-        self.0.get().as_ref().unwrap()
+        unsafe { &*self.0.get() }.as_ref().unwrap()
     }
 
     ///Same as get
@@ -111,21 +87,17 @@ impl BoxedAny {
 }
 
 ///ignores lifetime of reference
-pub struct UnsafeRef<T>(*mut T);
+#[repr(transparent)]
+pub struct UnsafeRef<T>(*const T);
 
 impl<T> UnsafeRef<T> {
     pub fn new(item: &T) -> Self {
-        Self(item as *const T as *mut T)
+        Self(item as *const T)
     }
 
     ///Assumes that value has initialized before use.
     pub fn get(&self) -> &T {
         unsafe { &*self.0 }
-    }
-
-    ///Same as get
-    pub fn get_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.0 }
     }
 }
 
@@ -136,16 +108,37 @@ impl<T> Deref for UnsafeRef<T> {
     }
 }
 
-impl<T> DerefMut for UnsafeRef<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.get_mut()
-    }
-}
-
 ///Doesn't leak pointer access when sent to other thread
 unsafe impl<T: Sync> Sync for UnsafeRef<T> {}
 ///No inner mutabiliy.
 unsafe impl<T: Send> Send for UnsafeRef<T> {}
+
+//
+
+///name
+///Wrapper for types that mutiple reading while writing is ok or user doesn't write while reading.
+pub struct MutOnlyOnMainThread<T>(T);
+
+impl<T> MutOnlyOnMainThread<T> {
+    pub const fn new(value: T) -> Self {
+        Self(value)
+    }
+
+    ///#SAFETY
+    ///
+    ///Call this only once per loop and in main thread
+    pub unsafe fn get_mut(&self) -> &mut T {
+        &mut *(&self.0 as *const T as *mut T)
+    }
+}
+
+impl<T> Deref for MutOnlyOnMainThread<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 #[cfg(test)]
 mod test {
