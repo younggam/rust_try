@@ -3,7 +3,7 @@ use rust_try_lib::application::*;
 use modules::core::CoreModule;
 
 fn main() {
-    let app = ApplicationWinit::new(CoreModule {});
+    let app = ApplicationWinit::new("Rust Try", CoreModule {});
     app.run();
 }
 

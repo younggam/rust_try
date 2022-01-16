@@ -1,3 +1,5 @@
+use super::GlobalState;
+
 use std::time::*;
 
 ///Global time
@@ -23,24 +25,24 @@ impl Time {
     pub fn delta(&self) -> f64 {
         self.delta
     }
+}
 
+impl GlobalState for Time {
     ///Updates time vars
-    pub fn update(&mut self) {
-        let mut_self = unsafe { &mut *(self as *const Self as *mut Self) };
-
+    fn pre_update(&mut self) {
         let new_pivot = Instant::now();
-        let past_time = mut_self.time;
+        let past_time = self.time;
 
         //Is this logic ensures to cover if-and-only-if overflow
-        match new_pivot.checked_duration_since(mut_self.pivot) {
+        match new_pivot.checked_duration_since(self.pivot) {
             Some(elapsed) => {
-                mut_self.time = elapsed.as_secs_f64();
-                mut_self.delta = mut_self.time - past_time;
+                self.time = elapsed.as_secs_f64();
+                self.delta = self.time - past_time;
             }
             None => {
-                mut_self.pivot = new_pivot;
-                mut_self.time = 0f64;
-                mut_self.delta = f64::MAX - past_time;
+                self.pivot = new_pivot;
+                self.time = 0f64;
+                self.delta = f64::MAX - past_time;
             }
         }
     }

@@ -17,15 +17,17 @@ impl<T> LazyManual<T> {
         unsafe { &*self.0.get() }.is_some()
     }
 
-    /**initializes value
-    \n
-    \ndoes nothing when value has already initialized*/
-    pub fn init(&self, item: T) {
+    ///initializes value. Does nothing when value has already initialized
+    ///#SAFETY
+    ///
+    ///don't call twice or more. Read-on-write could occur.
+    pub unsafe fn init(&self, item: T) {
+        //not atomic
         if self.inited() {
             return;
         }
 
-        *unsafe { &mut *self.0.get() } = Some(item);
+        *self.0.get() = Some(item);
     }
 
     ///Assumes that value has initialized before use.

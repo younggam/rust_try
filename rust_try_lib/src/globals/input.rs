@@ -1,3 +1,5 @@
+use super::GlobalState;
+
 #[repr(u32)]
 pub enum KeyCode {
     Key1,
@@ -203,13 +205,6 @@ impl Keyboard {
         }
     }
 
-    ///Updates keyboard states before polling events
-    pub fn pre_update(&mut self) {
-        for key in self.changed.drain(..) {
-            self.prev[key] = self.present[key]
-        }
-    }
-
     pub fn is_pressed(&self, key: KeyCode) -> bool {
         self.present[key as usize] == KeyState::Pressed
     }
@@ -226,5 +221,14 @@ impl Keyboard {
     pub fn just_released(&self, key: KeyCode) -> bool {
         let key = key as usize;
         self.present[key] == KeyState::Released && self.prev[key] == KeyState::Pressed
+    }
+}
+
+impl GlobalState for Keyboard {
+    ///Updates keyboard states before polling events
+    fn pre_update(&mut self) {
+        for key in self.changed.drain(..) {
+            self.prev[key] = self.present[key]
+        }
     }
 }

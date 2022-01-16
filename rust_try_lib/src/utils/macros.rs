@@ -75,3 +75,11 @@ macro_rules! box_as {
         Box::new($i) as Box<$T>
     };
 }
+
+///converts str literals to *const c_char. For c string but supports utf-8
+#[macro_export]
+macro_rules! to_raw_c_strs {
+    ($str:literal$(, $str_re:literal)*) => {
+        $str.as_ptr() as *const std::os::raw::c_char$(, $str_re.as_ptr() as *const std::os::raw::c_char)*
+    };
+}

@@ -1,8 +1,8 @@
-use std::cell::Cell;
-
 use crate::application::*;
 use crate::globals;
 use crate::graphics::window::*;
+
+use std::cell::Cell;
 
 //kinda.. side-effect of my modular practice
 extern crate winit as dep;
@@ -14,39 +14,28 @@ pub struct ApplicationWinit {
     event_loop: Cell<Option<EventLoop<()>>>,
 
     //common implementation
+    title: &'static str,
     core: Box<dyn Module>,
     modules: Vec<Box<dyn Module>>,
     is_running: bool,
 }
 
 impl ApplicationWinit {
-    pub fn new<C: 'static + Module>(core: C) -> Self {
+    pub fn new<C: 'static + Module>(title: &'static str, core: C) -> Self {
         let event_loop = EventLoop::new();
 
         Self {
             window: WindowWinit::new(&event_loop),
             event_loop: Cell::new(Some(event_loop)),
 
+            title,
             core: Box::new(core),
             modules: Vec::new(),
             is_running: true,
         }
     }
 
-    fn init_globals(&self) {
-        lazy_static::initialize(&globals::TIME);
-        lazy_static::initialize(&globals::KEYBOARD);
-        lazy_static::initialize(&globals::EVENT_REGISTRY);
-        globals::APPLICATION_WINIT.init(crate::utils::UnsafeRef::new(self));
-    }
-
-    fn pre_update(&mut self) {
-        unsafe { globals::KEYBOARD.get_mut().pre_update() };
-    }
-
     fn update(&mut self) {
-        unsafe { globals::TIME.get_mut().update() };
-
         self.core.update();
         self.operate(Module::update);
     }
@@ -56,18 +45,25 @@ impl ApplicationWinit {
             op(module.as_mut());
         }
     }
+
+    fn graphic_test() {
+        let mut g = crate::graphics::core::GraphicsCoreAsh::new();
+        g.init();
+    }
 }
 
 impl Application for ApplicationWinit {
     fn init(&mut self) {
-        self.init_globals();
+        globals::init();
+        unsafe { globals::APPLICATION_WINIT.init(crate::utils::UnsafeRef::new(self)) };
 
-        self.window.set_title("Rust Try");
+        self.window.set_title(self.title);
 
         self.core.init();
     }
 
     fn run(mut self) {
+        Self::graphic_test();
         self.event_loop
             .take()
             .unwrap()
@@ -75,7 +71,7 @@ impl Application for ApplicationWinit {
                 match event {
                     Event::NewEvents(start_cause) => match start_cause {
                         StartCause::Init => self.init(),
-                        StartCause::Poll => self.pre_update(),
+                        StartCause::Poll => globals::pre_update(),
                         _ => {}
                     },
                     Event::WindowEvent { event, .. } => match event {
