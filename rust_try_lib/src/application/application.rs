@@ -8,4 +8,6 @@ pub trait Application {
 
     ///Mutual call or access should not affect on its purpose or consequence
     fn exit(&self);
+
+    fn raw_window_handle(&self) -> &dyn raw_window_handle::HasRawWindowHandle;
 }

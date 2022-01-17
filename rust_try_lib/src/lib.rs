@@ -33,10 +33,10 @@ pub mod globals {
 }
 
 pub mod graphics {
-    pub mod core {
-        #[cfg(all(feature = "ash", feature = "winit"))]
-        leaf_mod! {pub ash}
+    #[cfg(all(feature = "ash", feature = "winit"))]
+    pub mod ash {
         leaf_mod! {pub core}
+        leaf_mod! {pub extensions}
     }
 
     pub mod elements {
@@ -49,6 +49,8 @@ pub mod graphics {
         #[cfg(feature = "winit")]
         leaf_mod! {pub winit}
     }
+
+    leaf_mod! {pub core}
 }
 
 pub mod math {

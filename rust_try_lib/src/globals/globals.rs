@@ -33,4 +33,4 @@ lazy_static! {
 }
 
 #[cfg(feature = "winit")]
-pub static APPLICATION_WINIT: LazyManual<UnsafeRef<ApplicationWinit>> = LazyManual::new();
+pub static APPLICATION: LazyManual<UnsafeRef<ApplicationWinit>> = LazyManual::new();

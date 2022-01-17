@@ -47,7 +47,7 @@ impl ApplicationWinit {
     }
 
     fn graphic_test() {
-        let mut g = crate::graphics::core::GraphicsCoreAsh::new();
+        let mut g = crate::graphics::ash::GraphicsCoreAsh::new();
         g.init();
     }
 }
@@ -55,15 +55,15 @@ impl ApplicationWinit {
 impl Application for ApplicationWinit {
     fn init(&mut self) {
         globals::init();
-        unsafe { globals::APPLICATION_WINIT.init(crate::utils::UnsafeRef::new(self)) };
+        unsafe { globals::APPLICATION.init(crate::utils::UnsafeRef::new(self)) };
 
         self.window.set_title(self.title);
 
         self.core.init();
+        Self::graphic_test();
     }
 
     fn run(mut self) {
-        Self::graphic_test();
         self.event_loop
             .take()
             .unwrap()
@@ -98,9 +98,13 @@ impl Application for ApplicationWinit {
     }
 
     fn exit(&self) {
-        //SAFETY
+        //# SAFETY
         //Mutual call or access doesn't affect on its purpose
         unsafe { &mut *(self as *const Self as *mut Self) }.is_running = false;
+    }
+
+    fn raw_window_handle(&self) -> &dyn raw_window_handle::HasRawWindowHandle {
+        self.window.as_raw_window_handle()
     }
 }
 

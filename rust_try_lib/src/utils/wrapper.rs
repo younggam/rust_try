@@ -18,8 +18,7 @@ impl<T> LazyManual<T> {
     }
 
     ///initializes value. Does nothing when value has already initialized
-    ///#SAFETY
-    ///
+    ///# SAFETY
     ///don't call twice or more. Read-on-write could occur.
     pub unsafe fn init(&self, item: T) {
         //not atomic
@@ -32,12 +31,17 @@ impl<T> LazyManual<T> {
 
     ///Assumes that value has initialized before use.
     pub fn get(&self) -> &T {
-        unsafe { &*self.0.get() }.as_ref().unwrap()
+        unsafe { &*self.0.get() }
+            .as_ref()
+            .expect("Initialize befor use LazyManual")
     }
 
     ///Same as get
     pub fn get_mut(&mut self) -> &mut T {
-        self.0.get_mut().as_mut().unwrap()
+        self.0
+            .get_mut()
+            .as_mut()
+            .expect("Initialize befor use LazyManual")
     }
 }
 
@@ -126,8 +130,7 @@ impl<T> MutOnlyOnMainThread<T> {
         Self(value)
     }
 
-    ///#SAFETY
-    ///
+    ///# SAFETY
     ///Call this only once per loop and in main thread
     pub unsafe fn get_mut(&self) -> &mut T {
         &mut *(&self.0 as *const T as *mut T)
