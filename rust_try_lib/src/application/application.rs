@@ -1,6 +1,8 @@
 ///This is interface for application and concrete implementation
 ///Concrete type of this interface should implement inner logic depends on specific crate
 pub trait Application {
+    type Window: crate::graphics::window::Window;
+
     fn init(&mut self) {}
 
     ///provides executation of assembled logics
@@ -9,5 +11,5 @@ pub trait Application {
     ///Mutual call or access should not affect on its purpose or consequence
     fn exit(&self);
 
-    fn raw_window_handle(&self) -> &dyn raw_window_handle::HasRawWindowHandle;
+    fn window(&self) -> &Self::Window;
 }

@@ -33,10 +33,11 @@ pub mod globals {
 }
 
 pub mod graphics {
-    #[cfg(all(feature = "ash", feature = "winit"))]
+    #[cfg(feature = "vulkan")]
     pub mod ash {
         leaf_mod! {pub core}
         leaf_mod! {pub extensions}
+        leaf_mod! {pub new}
     }
 
     pub mod elements {

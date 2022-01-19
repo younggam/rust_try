@@ -13,7 +13,7 @@ impl<T> LazyManual<T> {
         Self(UnsafeCell::new(None))
     }
 
-    fn inited(&self) -> bool {
+    pub fn inited(&self) -> bool {
         unsafe { &*self.0.get() }.is_some()
     }
 

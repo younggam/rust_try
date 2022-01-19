@@ -46,21 +46,25 @@ impl ApplicationWinit {
         }
     }
 
-    fn graphic_test() {
-        let mut g = crate::graphics::ash::GraphicsCoreAsh::new();
-        g.init();
+    fn on_exit(&mut self) {
+        self.core.on_exit();
+        globals::finalize();
     }
 }
 
 impl Application for ApplicationWinit {
+    type Window = WindowWinit;
+
     fn init(&mut self) {
         globals::init();
-        unsafe { globals::APPLICATION.init(crate::utils::UnsafeRef::new(self)) };
+        unsafe {
+            globals::APPLICATION.init(crate::utils::UnsafeRef::new(self));
+            globals::GRAPHICS.get_mut().init_vulkan();
+        }
 
         self.window.set_title(self.title);
 
         self.core.init();
-        Self::graphic_test();
     }
 
     fn run(mut self) {
@@ -85,10 +89,13 @@ impl Application for ApplicationWinit {
                     Event::UserEvent(_) => {}
                     Event::Suspended => {}
                     Event::Resumed => {}
-                    Event::MainEventsCleared => self.update(),
+                    Event::MainEventsCleared => {
+                        self.update();
+                        unsafe { globals::GRAPHICS.get_mut().draw_frame() };
+                    }
                     Event::RedrawRequested(_) => {}
                     Event::RedrawEventsCleared => {}
-                    Event::LoopDestroyed => self.core.on_exit(),
+                    Event::LoopDestroyed => self.on_exit(),
                 }
 
                 if !self.is_running {
@@ -103,8 +110,8 @@ impl Application for ApplicationWinit {
         unsafe { &mut *(self as *const Self as *mut Self) }.is_running = false;
     }
 
-    fn raw_window_handle(&self) -> &dyn raw_window_handle::HasRawWindowHandle {
-        self.window.as_raw_window_handle()
+    fn window(&self) -> &Self::Window {
+        &self.window
     }
 }
 

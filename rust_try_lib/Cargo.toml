@@ -16,19 +16,9 @@ tobj = "3.2.0"
 lazy_static = "1.4.0"
 
 [features]
-default = ["vulkan", "winit", "win-windows"]
+default = ["vulkan", "winit"]
 #graphic
 vulkan = ["ash", "ash-window"]
 #window
 
-#winodw backend
-#Be aware to select only one.
-win-metal = []
-win-ios = ["win-metal"]
-win-macos = ["win-metal"]
-win-xlib = []
-win-xcb = []
-win-wayland = []
-win-windows = []
-win-android = []
 #event system

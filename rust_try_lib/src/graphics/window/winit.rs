@@ -1,6 +1,6 @@
 use super::Window;
 
-use raw_window_handle::HasRawWindowHandle;
+use raw_window_handle::*;
 
 pub struct WindowWinit {
     inner: winit::window::Window,
@@ -41,5 +41,11 @@ impl Window for WindowWinit {
 
     fn set_resizable(&self, resizeable: bool) {
         self.inner.set_resizable(resizeable);
+    }
+}
+
+unsafe impl HasRawWindowHandle for WindowWinit {
+    fn raw_window_handle(&self) -> RawWindowHandle {
+        self.inner.raw_window_handle()
     }
 }

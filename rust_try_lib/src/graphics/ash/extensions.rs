@@ -1,4 +1,9 @@
-use super::core::*;
+//! Kinda containers of extensions
+
+use crate::*;
+use application::Application;
+
+use super::new::*;
 
 use std::ops::Deref;
 use std::os::raw::c_char;
@@ -20,7 +25,7 @@ impl DebugUtilsLoader {
     pub fn new() -> Self {
         Self {
             debug_utils: None,
-            messenger_create_info: GraphicsCoreAsh::debug_utils_messenger_create_info(),
+            messenger_create_info: NewGraphicsCoreAsh::debug_utils_messenger_create_info(),
             messenger: None,
         }
     }
@@ -80,42 +85,42 @@ impl Deref for DebugUtilsLoader {
 compile_error!("The platform you're compiling for is not supported by ash");
 //일단, 현재 os window backend 쿼리, 관련 객체 저장
 pub struct SurfaceLoader {
-    surface: Option<khr::Surface>,
-    backend: Option<vk::SurfaceKHR>,
+    surface_extension: Option<khr::Surface>,
+    surface_handle: Option<vk::SurfaceKHR>,
 }
 
 impl SurfaceLoader {
     pub fn new() -> Self {
         Self {
-            surface: None,
+            surface_extension: None,
             //isn't name confused?
-            backend: None,
+            surface_handle: None,
         }
     }
 
-    pub fn init(&mut self, surface: khr::Surface) {
-        if self.surface.is_none() {
-            self.surface = Some(surface);
+    pub fn init(&mut self, surface_extension: khr::Surface) {
+        if self.surface_extension.is_none() {
+            self.surface_extension = Some(surface_extension);
         }
     }
 
-    pub fn set_backend(&mut self, backend: vk::SurfaceKHR) {
-        if self.backend.is_none() {
-            self.backend = Some(backend);
+    pub fn set_surface(&mut self, surface: vk::SurfaceKHR) {
+        if self.surface_handle.is_none() {
+            self.surface_handle = Some(surface);
         }
     }
 
-    pub fn backend(&self) -> vk::SurfaceKHR {
-        self.backend.expect("use before set")
+    pub fn surface(&self) -> vk::SurfaceKHR {
+        self.surface_handle.expect("use before set")
     }
 
-    pub fn destroy_backend(&mut self) {
+    pub fn destroy_surface(&mut self) {
         unsafe {
-            if self.surface.is_some() && self.backend.is_some() {
-                self.surface
+            if self.surface_extension.is_some() && self.surface_handle.is_some() {
+                self.surface_extension
                     .as_ref()
                     .unwrap()
-                    .destroy_surface(self.backend.unwrap(), None);
+                    .destroy_surface(self.surface_handle.unwrap(), None);
             }
         }
     }
@@ -123,6 +128,13 @@ impl SurfaceLoader {
 
 impl ExtLoader for SurfaceLoader {
     fn extension_names() -> Vec<*const c_char> {
+        if globals::APPLICATION.inited() {
+            return ash_window::enumerate_required_extensions(globals::APPLICATION.window())
+                .unwrap()
+                .iter()
+                .map(|name| name.as_ptr())
+                .collect::<Vec<_>>();
+        }
         #[cfg(target_os = "windows")]
         let backend_name = khr::Win32Surface::name();
         #[cfg(any(
@@ -158,6 +170,6 @@ impl Deref for SurfaceLoader {
     type Target = khr::Surface;
 
     fn deref(&self) -> &Self::Target {
-        self.surface.as_ref().expect("Use before init")
+        self.surface_extension.as_ref().expect("Use before init")
     }
 }
