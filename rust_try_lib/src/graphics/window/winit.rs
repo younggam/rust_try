@@ -9,18 +9,17 @@ pub struct WindowWinit {
 pub type WinitTarget = winit::event_loop::EventLoopWindowTarget<()>;
 
 impl WindowWinit {
-    pub fn new(winit_target: &WinitTarget) -> Self {
+    pub fn new(title: &'static str, winit_target: &WinitTarget) -> Self {
         Self {
-            inner: winit::window::Window::new(winit_target).unwrap(),
+            inner: winit::window::WindowBuilder::new()
+                .with_title(title)
+                .build(winit_target)
+                .unwrap(),
         }
     }
 }
 
 impl Window for WindowWinit {
-    fn as_raw_window_handle(&self) -> &dyn HasRawWindowHandle {
-        &self.inner
-    }
-
     fn scale_factor(&self) -> f64 {
         self.inner.scale_factor()
     }
@@ -41,6 +40,14 @@ impl Window for WindowWinit {
 
     fn set_resizable(&self, resizeable: bool) {
         self.inner.set_resizable(resizeable);
+    }
+}
+
+impl std::ops::Deref for WindowWinit {
+    type Target = winit::window::Window;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 

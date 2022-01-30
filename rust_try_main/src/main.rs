@@ -1,15 +1,15 @@
 use rust_try_lib::application::*;
 
-use modules::core::CoreModule;
+use scenes::initial::InitialScene;
 
 fn main() {
-    let app = ApplicationWinit::new("Rust Try", CoreModule {});
+    env_logger::init();
+    let app = ApplicationWinit::new("Rust Try", InitialScene {});
     app.run();
 }
 
-mod modules {
-    pub mod core;
-    // pub mod renderer;
+mod scenes {
+    pub mod initial;
 }
 
 #[cfg(test)]

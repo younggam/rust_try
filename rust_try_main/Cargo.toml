@@ -7,3 +7,4 @@ edition = "2018"
 
 [dependencies]
 rust_try_lib = { path = "../rust_try_lib" }
+env_logger = "0.9.0"

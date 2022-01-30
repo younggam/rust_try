@@ -1,8 +1,6 @@
+///Sticks to raw_window_handle crate.
+///Any crates that backend of window should depend on raw_window_handle.
 pub trait Window: raw_window_handle::HasRawWindowHandle {
-    ///Sticks to raw_window_handle crate.
-    ///Any crates that backend of window should depend on raw_window_handle.
-    fn as_raw_window_handle(&self) -> &dyn raw_window_handle::HasRawWindowHandle;
-
     ///Factor of scale between logical pixels and physical pixels
     ///And this might have a effect of zoom in/out.
     ///Low value : zoom out

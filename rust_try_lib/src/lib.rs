@@ -20,7 +20,7 @@ extern crate lazy_static;
 
 pub mod application {
     leaf_mod! {pub application}
-    leaf_mod! {pub module}
+    leaf_mod! {pub scene}
     #[cfg(feature = "winit")]
     leaf_mod! {pub winit}
 }
@@ -33,16 +33,13 @@ pub mod globals {
 }
 
 pub mod graphics {
-    #[cfg(feature = "vulkan")]
-    pub mod ash {
-        leaf_mod! {pub core}
-        leaf_mod! {pub extensions}
-        leaf_mod! {pub new}
-    }
-
     pub mod elements {
         leaf_mod! {pub material}
         leaf_mod! {pub vertex}
+    }
+
+    pub mod wgpu {
+        leaf_mod! {pub core}
     }
 
     pub mod window {

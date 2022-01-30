@@ -1,5 +1,6 @@
 use crate::application::*;
 use crate::globals;
+use crate::graphics::wgpu::*;
 use crate::graphics::window::*;
 
 use std::cell::Cell;
@@ -12,42 +13,39 @@ pub struct ApplicationWinit {
     //dependency specific
     window: WindowWinit,
     event_loop: Cell<Option<EventLoop<()>>>,
+    graphics: GraphicsCoreWgpu,
 
     //common implementation
-    title: &'static str,
-    core: Box<dyn Module>,
-    modules: Vec<Box<dyn Module>>,
+    scene: Option<Box<dyn Scene>>,
     is_running: bool,
 }
 
 impl ApplicationWinit {
-    pub fn new<C: 'static + Module>(title: &'static str, core: C) -> Self {
+    pub fn new<S: 'static + Scene>(title: &'static str, initial_scene: S) -> Self {
         let event_loop = EventLoop::new();
+        let window = WindowWinit::new(title, &event_loop);
 
         Self {
-            window: WindowWinit::new(&event_loop),
             event_loop: Cell::new(Some(event_loop)),
+            graphics: pollster::block_on(GraphicsCoreWgpu::new(&window)),
+            window,
 
-            title,
-            core: Box::new(core),
-            modules: Vec::new(),
+            scene: Some(Box::new(initial_scene)),
             is_running: true,
         }
     }
 
     fn update(&mut self) {
-        self.core.update();
-        self.operate(Module::update);
-    }
-
-    fn operate(&mut self, op: fn(&mut (dyn Module + 'static))) {
-        for module in self.modules.iter_mut() {
-            op(module.as_mut());
+        if let Some(ref mut scene) = self.scene {
+            scene.update();
         }
     }
 
     fn on_exit(&mut self) {
-        self.core.on_exit();
+        if let Some(ref mut scene) = self.scene {
+            scene.force_exit();
+        }
+
         globals::finalize();
     }
 }
@@ -59,12 +57,11 @@ impl Application for ApplicationWinit {
         globals::init();
         unsafe {
             globals::APPLICATION.init(crate::utils::UnsafeRef::new(self));
-            globals::GRAPHICS.get_mut().init_vulkan();
         }
 
-        self.window.set_title(self.title);
-
-        self.core.init();
+        if let Some(ref mut scene) = self.scene {
+            scene.enter();
+        }
     }
 
     fn run(mut self) {
@@ -91,7 +88,6 @@ impl Application for ApplicationWinit {
                     Event::Resumed => {}
                     Event::MainEventsCleared => {
                         self.update();
-                        unsafe { globals::GRAPHICS.get_mut().draw_frame() };
                     }
                     Event::RedrawRequested(_) => {}
                     Event::RedrawEventsCleared => {}
