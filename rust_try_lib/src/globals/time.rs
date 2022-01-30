@@ -4,7 +4,7 @@ use std::time::*;
 
 ///Global time
 pub struct Time {
-    pivot: Instant,
+    initial_instant: Instant,
     time: f64,
     delta: f64,
 }
@@ -12,7 +12,7 @@ pub struct Time {
 impl Time {
     pub fn new() -> Self {
         Self {
-            pivot: Instant::now(),
+            initial_instant: Instant::now(),
             time: 0f64,
             delta: 0f64,
         }
@@ -30,17 +30,17 @@ impl Time {
 impl GlobalState for Time {
     ///Updates time vars
     fn pre_update(&mut self) {
-        let new_pivot = Instant::now();
+        let new_instant = Instant::now();
         let past_time = self.time;
 
         //Is this logic ensures to cover if-and-only-if overflow
-        match new_pivot.checked_duration_since(self.pivot) {
-            Some(elapsed) => {
-                self.time = elapsed.as_secs_f64();
+        match new_instant.checked_duration_since(self.initial_instant) {
+            Some(duration) => {
+                self.time = duration.as_secs_f64();
                 self.delta = self.time - past_time;
             }
             None => {
-                self.pivot = new_pivot;
+                self.initial_instant = new_instant;
                 self.time = 0f64;
                 self.delta = f64::MAX - past_time;
             }
