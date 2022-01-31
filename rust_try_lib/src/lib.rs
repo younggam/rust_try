@@ -17,6 +17,8 @@ macro_rules! leaf_mod{
 
 // #[macro_use]
 // extern crate lazy_static;
+#[macro_use]
+extern crate wgpu;
 
 pub mod application {
     leaf_mod! {pub application}
@@ -30,10 +32,6 @@ pub mod graphics {
     pub mod elements {
         leaf_mod! {pub material}
         leaf_mod! {pub vertex}
-    }
-
-    pub mod wgpu {
-        leaf_mod! {pub core}
     }
 
     pub mod window {

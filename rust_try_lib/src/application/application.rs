@@ -16,11 +16,11 @@ pub trait Application {
     fn fin(&mut self);
 
     fn exit() {
-        SHOULD_EXIT.store(true, Ordering::Relaxed);
+        SHOULD_EXIT.store(true, Ordering::Release);
     }
 
     fn should_exit() -> bool {
-        SHOULD_EXIT.load(Ordering::Relaxed)
+        SHOULD_EXIT.load(Ordering::Acquire)
     }
 
     fn window(&self) -> &Self::Window;

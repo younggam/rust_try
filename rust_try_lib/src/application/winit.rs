@@ -1,7 +1,7 @@
 use crate::application::*;
 use crate::*;
-use graphics::wgpu::*;
 use graphics::window::*;
+use graphics::GraphicsCore;
 use input::keyboard;
 use time;
 
@@ -15,7 +15,7 @@ pub struct ApplicationWinit {
     //dependency specific
     window: WindowWinit,
     event_loop: Cell<Option<EventLoop<()>>>,
-    graphics: GraphicsCoreWgpu,
+    graphics: GraphicsCore,
 
     //common implementation
     scene: Option<Box<dyn Scene>>,
@@ -28,7 +28,7 @@ impl ApplicationWinit {
 
         Self {
             event_loop: Cell::new(Some(event_loop)),
-            graphics: pollster::block_on(GraphicsCoreWgpu::new(&window)),
+            graphics: pollster::block_on(GraphicsCore::new(&window)),
             window,
 
             scene: Some(Box::new(initial_scene)),
@@ -69,20 +69,30 @@ impl Application for ApplicationWinit {
                         }
                         _ => {}
                     },
-                    Event::WindowEvent { event, .. } => match event {
-                        WindowEvent::CloseRequested => Self::exit(),
-                        WindowEvent::KeyboardInput { input, .. } => {
-                            if let Some(key) = input.virtual_keycode {
-                                let key = key as usize;
-                                let state = match input.state {
-                                    ElementState::Pressed => keyboard::KeyState::Pressed,
-                                    ElementState::Released => keyboard::KeyState::Released,
-                                };
-                                keyboard::enqueue(key, state);
+                    Event::WindowEvent { window_id, event } if window_id == self.window.id() => {
+                        match event {
+                            WindowEvent::Resized(phyiscal_size) => {
+                                self.graphics
+                                    .resize(phyiscal_size.width, phyiscal_size.height);
                             }
+                            WindowEvent::CloseRequested => Self::exit(),
+                            WindowEvent::KeyboardInput { input, .. } => {
+                                if let Some(key) = input.virtual_keycode {
+                                    let key = key as usize;
+                                    let state = match input.state {
+                                        ElementState::Pressed => keyboard::KeyState::Pressed,
+                                        ElementState::Released => keyboard::KeyState::Released,
+                                    };
+                                    keyboard::enqueue(key, state);
+                                }
+                            }
+                            WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                                self.graphics
+                                    .resize(new_inner_size.width, new_inner_size.height);
+                            }
+                            _ => {}
                         }
-                        _ => {}
-                    },
+                    }
                     Event::DeviceEvent { .. } => {}
                     Event::UserEvent(_) => {}
                     Event::Suspended => {}
@@ -90,14 +100,27 @@ impl Application for ApplicationWinit {
                     Event::MainEventsCleared => {
                         keyboard::update();
                         self.update();
+
+                        self.window.request_redraw();
                     }
-                    Event::RedrawRequested(_) => {}
+                    Event::RedrawRequested(window_id) if window_id == self.window.id() => {
+                        match self.graphics.render() {
+                            Ok(_) => {}
+                            // Reconfigure the surface if lost
+                            Err(wgpu::SurfaceError::Lost) => self.graphics.surface_refresh(),
+                            // The system is out of memory, we should probably quit
+                            Err(wgpu::SurfaceError::OutOfMemory) => Self::exit(),
+                            // All other errors (Outdated, Timeout) should be resolved by the next frame
+                            Err(e) => eprintln!("{:?}", e),
+                        }
+                    }
                     Event::RedrawEventsCleared => {}
                     Event::LoopDestroyed => {
                         self.fin();
                         keyboard::fin();
                         time::fin();
                     }
+                    _ => {}
                 }
 
                 if Self::should_exit() {
