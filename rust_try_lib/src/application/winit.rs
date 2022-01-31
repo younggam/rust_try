@@ -1,7 +1,9 @@
 use crate::application::*;
-use crate::globals;
-use crate::graphics::wgpu::*;
-use crate::graphics::window::*;
+use crate::*;
+use graphics::wgpu::*;
+use graphics::window::*;
+use input::keyboard;
+use time;
 
 use std::cell::Cell;
 
@@ -17,7 +19,6 @@ pub struct ApplicationWinit {
 
     //common implementation
     scene: Option<Box<dyn Scene>>,
-    is_running: bool,
 }
 
 impl ApplicationWinit {
@@ -31,7 +32,6 @@ impl ApplicationWinit {
             window,
 
             scene: Some(Box::new(initial_scene)),
-            is_running: true,
         }
     }
 
@@ -40,25 +40,12 @@ impl ApplicationWinit {
             scene.update();
         }
     }
-
-    fn on_exit(&mut self) {
-        if let Some(ref mut scene) = self.scene {
-            scene.force_exit();
-        }
-
-        globals::finalize();
-    }
 }
 
 impl Application for ApplicationWinit {
     type Window = WindowWinit;
 
     fn init(&mut self) {
-        globals::init();
-        unsafe {
-            globals::APPLICATION.init(crate::utils::UnsafeRef::new(self));
-        }
-
         if let Some(ref mut scene) = self.scene {
             scene.enter();
         }
@@ -71,14 +58,28 @@ impl Application for ApplicationWinit {
             .run(move |event, _, control_flow| {
                 match event {
                     Event::NewEvents(start_cause) => match start_cause {
-                        StartCause::Init => self.init(),
-                        StartCause::Poll => globals::pre_update(),
+                        StartCause::Init => {
+                            time::init();
+                            keyboard::init();
+                            self.init();
+                        }
+                        StartCause::Poll => {
+                            time::update();
+                            keyboard::pre_update();
+                        }
                         _ => {}
                     },
                     Event::WindowEvent { event, .. } => match event {
-                        WindowEvent::CloseRequested => self.exit(),
+                        WindowEvent::CloseRequested => Self::exit(),
                         WindowEvent::KeyboardInput { input, .. } => {
-                            unsafe { globals::KEYBOARD.get_mut().handle_input(input) };
+                            if let Some(key) = input.virtual_keycode {
+                                let key = key as usize;
+                                let state = match input.state {
+                                    ElementState::Pressed => keyboard::KeyState::Pressed,
+                                    ElementState::Released => keyboard::KeyState::Released,
+                                };
+                                keyboard::enqueue(key, state);
+                            }
                         }
                         _ => {}
                     },
@@ -87,23 +88,28 @@ impl Application for ApplicationWinit {
                     Event::Suspended => {}
                     Event::Resumed => {}
                     Event::MainEventsCleared => {
+                        keyboard::update();
                         self.update();
                     }
                     Event::RedrawRequested(_) => {}
                     Event::RedrawEventsCleared => {}
-                    Event::LoopDestroyed => self.on_exit(),
+                    Event::LoopDestroyed => {
+                        self.fin();
+                        keyboard::fin();
+                        time::fin();
+                    }
                 }
 
-                if !self.is_running {
+                if Self::should_exit() {
                     *control_flow = ControlFlow::Exit;
                 }
             });
     }
 
-    fn exit(&self) {
-        //# SAFETY
-        //Mutual call or access doesn't affect on its purpose
-        unsafe { &mut *(self as *const Self as *mut Self) }.is_running = false;
+    fn fin(&mut self) {
+        if let Some(ref mut scene) = self.scene {
+            scene.force_exit();
+        }
     }
 
     fn window(&self) -> &Self::Window {

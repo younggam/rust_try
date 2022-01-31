@@ -11,6 +11,7 @@ pub struct EventRegistry {
 }
 
 impl EventRegistry {
+    #[allow(dead_code)]
     pub(crate) fn new() -> Self {
         Self {
             events: HashMap::new(),
@@ -43,13 +44,13 @@ impl EventRegistry {
         self.events.clear();
     }
 
-    pub fn clear_list(&mut self, list: &Vec<TypeId>) {
+    pub fn clear_list(&mut self, list: &[TypeId]) {
         for item in list {
             self.events.remove(item);
         }
     }
 
-    pub fn clear_exclude(&mut self, list: &Vec<TypeId>) {
+    pub fn clear_exclude(&mut self, list: &[TypeId]) {
         let mut temp = Vec::new();
         for item in list {
             if let Some(entry) = self.events.remove_entry(item) {

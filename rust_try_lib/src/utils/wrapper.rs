@@ -3,45 +3,53 @@
 use std::any::Any;
 use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
+use std::sync::Once;
 
 ///This wrapper assumes that value has ever initialized before using it.
-#[repr(transparent)]
-pub struct LazyManual<T>(UnsafeCell<Option<T>>);
+pub struct LazyManual<T>(UnsafeCell<Option<T>>, Once, Once);
 
 impl<T> LazyManual<T> {
     pub const fn new() -> Self {
-        Self(UnsafeCell::new(None))
-    }
-
-    pub fn inited(&self) -> bool {
-        unsafe { &*self.0.get() }.is_some()
+        Self(UnsafeCell::new(None), Once::new(), Once::new())
     }
 
     ///initializes value. Does nothing when value has already initialized
-    ///# SAFETY
-    ///don't call twice or more. Read-on-write could occur.
-    pub unsafe fn init(&self, item: T) {
-        //not atomic
-        if self.inited() {
-            return;
-        }
+    pub fn init(&self, item: T) {
+        self.1.call_once(|| {
+            unsafe { *self.0.get() = Some(item) };
+        })
+    }
 
-        *self.0.get() = Some(item);
+    pub fn fin(&self) {
+        self.2.call_once(|| {
+            unsafe { *self.0.get() = None };
+        })
     }
 
     ///Assumes that value has initialized before use.
     pub fn get(&self) -> &T {
-        unsafe { &*self.0.get() }
-            .as_ref()
-            .expect("Initialize befor use LazyManual")
+        unsafe {
+            match &*self.0.get() {
+                Some(ref item) => item,
+                None => {
+                    debug_assert!(false, "Attempted to use unitialized or dropped lazy value.");
+                    std::hint::unreachable_unchecked()
+                }
+            }
+        }
     }
 
     ///Same as get
     pub fn get_mut(&mut self) -> &mut T {
-        self.0
-            .get_mut()
-            .as_mut()
-            .expect("Initialize befor use LazyManual")
+        unsafe {
+            match &mut *self.0.get() {
+                Some(ref mut item) => item,
+                None => {
+                    debug_assert!(false, "Attempted to use unitialized or dropped lazy value.");
+                    std::hint::unreachable_unchecked()
+                }
+            }
+        }
     }
 }
 
@@ -118,32 +126,6 @@ impl<T> Deref for UnsafeRef<T> {
 unsafe impl<T: Sync> Sync for UnsafeRef<T> {}
 ///No inner mutabiliy.
 unsafe impl<T: Send> Send for UnsafeRef<T> {}
-
-//
-
-///name
-///Wrapper for types that mutiple reading while writing is ok or user doesn't write while reading.
-pub struct MutOnlyOnMainThread<T>(T);
-
-impl<T> MutOnlyOnMainThread<T> {
-    pub const fn new(value: T) -> Self {
-        Self(value)
-    }
-
-    ///# SAFETY
-    ///Call this only once per loop and in main thread
-    pub unsafe fn get_mut(&self) -> &mut T {
-        &mut *(&self.0 as *const T as *mut T)
-    }
-}
-
-impl<T> Deref for MutOnlyOnMainThread<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 #[cfg(test)]
 mod test {

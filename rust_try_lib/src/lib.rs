@@ -15,21 +15,15 @@ macro_rules! leaf_mod{
     }
 }
 
-#[macro_use]
-extern crate lazy_static;
+// #[macro_use]
+// extern crate lazy_static;
 
 pub mod application {
     leaf_mod! {pub application}
+    leaf_mod! {pub event}
     leaf_mod! {pub scene}
     #[cfg(feature = "winit")]
     leaf_mod! {pub winit}
-}
-
-pub mod globals {
-    leaf_mod! {pub event}
-    leaf_mod! {pub globals}
-    leaf_mod! {pub input}
-    leaf_mod! {pub time}
 }
 
 pub mod graphics {
@@ -51,6 +45,10 @@ pub mod graphics {
     leaf_mod! {pub core}
 }
 
+pub mod input {
+    pub mod keyboard;
+}
+
 pub mod math {
     leaf_mod! {pub vector}
     leaf_mod! {pub matrix}
@@ -60,3 +58,5 @@ pub mod utils {
     leaf_mod! {pub macros}
     leaf_mod! {pub wrapper}
 }
+
+pub mod time;
