@@ -30,8 +30,9 @@ pub mod application {
 
 pub mod graphics {
     pub mod elements {
-        leaf_mod! {pub material}
+        leaf_mod! {pub model}
         leaf_mod! {pub texture}
+        leaf_mod! {pub uniform}
         leaf_mod! {pub vertex}
     }
 
@@ -41,6 +42,7 @@ pub mod graphics {
         leaf_mod! {pub winit}
     }
 
+    leaf_mod! {pub camera}
     leaf_mod! {pub core}
 }
 
