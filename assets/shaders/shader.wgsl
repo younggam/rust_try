@@ -72,7 +72,7 @@ fn vs_main(
     out.clip_position = proj.matrix * world_position;
     out.tex_coords = model.tex_coords;
     out.tangent_position = tangent_matrix * world_position.xyz;
-    out.tangent_view_position = tangent_matrix * proj.view_pos;
+    out.tangent_view_position = tangent_matrix * vec3<f32>(1.,1.,1.);//proj.view_pos;
     out.tangent_light_position = tangent_matrix * light.position;
     return out;
 }

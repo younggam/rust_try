@@ -244,8 +244,8 @@ impl GraphicsCore {
         });
 
         let view_projection = ViewProjectionUniform {
-            matrix: Matrix4::<f32>::identity().into(),
-            view_position: [0.0, 0.0, 0.0],
+            matrix: perspective(Deg(45.0), 800f32 / 600f32, 0.1, 100.0).into(), //Matrix4::<f32>::identity().into(),
+            view_position: [-100.0, -100.0, -1000.0],
             _p: 0,
         };
         let view_projection_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

@@ -76,16 +76,7 @@ impl Application for ApplicationWinit {
                                     .resize(phyiscal_size.width, phyiscal_size.height);
                             }
                             WindowEvent::CloseRequested => Self::exit(),
-                            WindowEvent::KeyboardInput { input, .. } => {
-                                if let Some(key) = input.virtual_keycode {
-                                    let key = key as usize;
-                                    let state = match input.state {
-                                        ElementState::Pressed => keyboard::KeyState::Pressed,
-                                        ElementState::Released => keyboard::KeyState::Released,
-                                    };
-                                    keyboard::enqueue(key, state);
-                                }
-                            }
+                            WindowEvent::KeyboardInput { input, .. } => handle_keyboard(input),
                             WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                                 self.graphics
                                     .resize(new_inner_size.width, new_inner_size.height);
@@ -135,6 +126,18 @@ impl Application for ApplicationWinit {
 
     fn window(&self) -> &Self::Window {
         &self.window
+    }
+}
+
+#[cfg(feature = "winit")]
+fn handle_keyboard(keyboard_input: KeyboardInput) {
+    if let Some(key) = keyboard_input.virtual_keycode {
+        let key = key as usize;
+        let state = match keyboard_input.state {
+            ElementState::Pressed => keyboard::KeyState::Pressed,
+            ElementState::Released => keyboard::KeyState::Released,
+        };
+        keyboard::enqueue(key, state);
     }
 }
 
