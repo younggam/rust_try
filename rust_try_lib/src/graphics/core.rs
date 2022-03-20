@@ -17,6 +17,9 @@ pub struct GraphicsCore {
 
     vertices: Vec<ColorVertex>,
     vertex_buffer: wgpu::Buffer,
+
+    instances: Vec<Instance>,
+    instance_buffer: wgpu::Buffer,
 }
 
 impl GraphicsCore {
@@ -75,7 +78,7 @@ impl GraphicsCore {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[ColorVertex::buffer_layout()],
+                buffers: &[ColorVertex::buffer_layout(), Instance::buffer_layout()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -122,14 +125,31 @@ impl GraphicsCore {
             Texture::create_depth_texture(&device, &surface_config, "Depth Texture");
 
         let vertices = vec![
-            ColorVertex::new([0.0, 0.5, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0]),
-            ColorVertex::new([-0.5, -0.5, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0]),
-            ColorVertex::new([0.5, -0.5, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]),
+            ColorVertex::new([0.0, 0.5, 0.0, 5.0], [0.0, 1.0, 0.0, 1.0]),
+            ColorVertex::new([-0.5, -0.5, 0.0, 5.0], [1.0, 0.0, 0.0, 1.0]),
+            ColorVertex::new([0.5, -0.5, 0.0, 5.0], [0.0, 0.0, 1.0, 1.0]),
         ];
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let mut instances = Vec::with_capacity(100);
+        for i in 0..10 {
+            for j in 0..10 {
+                instances.push(Instance::from_translation(vec3(
+                    0.9 - 0.2 * i as f32,
+                    0.9 - 0.2 * j as f32,
+                    0.0,
+                )))
+            }
+        }
+
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&instances),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
@@ -146,6 +166,9 @@ impl GraphicsCore {
 
             vertices,
             vertex_buffer,
+
+            instances,
+            instance_buffer,
         }
     }
 
@@ -183,9 +206,9 @@ impl GraphicsCore {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
+                            r: 0.05,
+                            g: 0.05,
+                            b: 0.05,
                             a: 1.0,
                         }),
                         store: true,
@@ -203,7 +226,8 @@ impl GraphicsCore {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.draw(0..3, 0..1);
+            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            render_pass.draw(0..3, 0..100);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();

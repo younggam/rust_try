@@ -30,9 +30,9 @@ pub mod application {
 
 pub mod graphics {
     pub mod elements {
-        leaf_mod! {pub model}
+        // leaf_mod! {pub model}
         leaf_mod! {pub texture}
-        leaf_mod! {pub uniform}
+        // leaf_mod! {pub uniform}
         leaf_mod! {pub vertex}
     }
 
