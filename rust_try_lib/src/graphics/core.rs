@@ -1,6 +1,8 @@
 use super::elements::*;
 use super::window::Window;
 
+use std::collections::HashMap;
+
 use wgpu::util::DeviceExt;
 
 use cgmath::*;
@@ -15,10 +17,9 @@ pub struct GraphicsCore {
 
     depth_texture: Texture,
 
-    vertices: Vec<ColorVertex>,
+    indices_count: u32,
+    index_buffer: wgpu::Buffer,
     vertex_buffer: wgpu::Buffer,
-
-    instances: Vec<Instance>,
     instance_buffer: wgpu::Buffer,
 }
 
@@ -124,6 +125,15 @@ impl GraphicsCore {
         let depth_texture =
             Texture::create_depth_texture(&device, &surface_config, "Depth Texture");
 
+        let indices = vec![0u16, 1, 2];
+        let indices_count = indices.len() as u32;
+
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+
         let vertices = vec![
             ColorVertex::new([0.0, 0.5, 0.0, 5.0], [0.0, 1.0, 0.0, 1.0]),
             ColorVertex::new([-0.5, -0.5, 0.0, 5.0], [1.0, 0.0, 0.0, 1.0]),
@@ -137,13 +147,14 @@ impl GraphicsCore {
         });
 
         let mut instances = Vec::with_capacity(100);
+        let axis: Vector3<f32> = vec3(1.0, 1.0, 1.0) / 3.0f32.sqrt();
         for i in 0..10 {
             for j in 0..10 {
-                instances.push(Instance::from_translation(vec3(
-                    0.9 - 0.2 * i as f32,
-                    0.9 - 0.2 * j as f32,
-                    0.0,
-                )))
+                let k = (i * 10 + j * 100) as f32 * std::f32::consts::PI / 360.0;
+                instances.push(Instance::new(
+                    vec3(0.9 - 0.2 * i as f32, 0.9 - 0.2 * j as f32, 0.5),
+                    Quaternion::from_sv(k.cos(), k.sin() * axis),
+                ))
             }
         }
 
@@ -164,10 +175,9 @@ impl GraphicsCore {
 
             depth_texture,
 
-            vertices,
+            indices_count,
+            index_buffer,
             vertex_buffer,
-
-            instances,
             instance_buffer,
         }
     }
@@ -225,9 +235,10 @@ impl GraphicsCore {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            render_pass.draw(0..3, 0..100);
+            render_pass.draw_indexed(0..self.indices_count, 0, 0..100);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
@@ -236,4 +247,6 @@ impl GraphicsCore {
     }
 }
 
-pub struct Batch {}
+pub struct Batch {
+    model: HashMap<Model, Vec<Instance>>,
+}

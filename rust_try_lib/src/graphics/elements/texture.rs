@@ -1,8 +1,3 @@
-use std::num::NonZeroU32;
-use std::path::Path;
-
-use image::GenericImageView;
-
 pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
