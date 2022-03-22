@@ -248,5 +248,5 @@ impl GraphicsCore {
 }
 
 pub struct Batch {
-    model: HashMap<Model, Vec<Instance>>,
+    model: HashMap<Mesh, Vec<Instance>>,
 }
