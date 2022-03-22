@@ -248,5 +248,6 @@ impl GraphicsCore {
 }
 
 pub struct Batch {
-    model: HashMap<Mesh, Vec<Instance>>,
+    buffers: HashMap<u32, (wgpu::Buffer, wgpu::Buffer)>,
+    model: HashMap<u32, Vec<Instance>>,
 }
