@@ -1,5 +1,6 @@
 use super::*;
 
+use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 static LAST_MESH_ID: AtomicU32 = AtomicU32::new(0);
@@ -33,6 +34,22 @@ impl Mesh {
         &self.indices
     }
 }
+
+impl PartialEq for Mesh {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Mesh {}
+
+impl Hash for Mesh {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+//
 
 pub struct Model {
     meshes: Vec<Mesh>,

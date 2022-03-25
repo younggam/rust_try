@@ -147,13 +147,13 @@ impl GraphicsCore {
         });
 
         let mut instances = Vec::with_capacity(100);
-        let axis: Vector3<f32> = vec3(1.0, 1.0, 1.0) / 3.0f32.sqrt();
+        let axis: Vector3<f32> = vec3(0.0, 0.0, 1.0) / 1.0f32.sqrt();
         for i in 0..10 {
             for j in 0..10 {
                 let k = (i * 10 + j * 100) as f32 * std::f32::consts::PI / 360.0;
                 instances.push(Instance::new(
                     vec3(0.9 - 0.2 * i as f32, 0.9 - 0.2 * j as f32, 0.5),
-                    Quaternion::from_sv(k.cos(), k.sin() * axis),
+                    Quaternion::from_sv(0.0, k.sin() * axis),
                 ))
             }
         }
@@ -250,4 +250,13 @@ impl GraphicsCore {
 pub struct Batch {
     buffers: HashMap<u32, (wgpu::Buffer, wgpu::Buffer)>,
     model: HashMap<u32, Vec<Instance>>,
+}
+
+impl Batch {
+    pub fn new() -> Self {
+        Self {
+            buffers: HashMap::new(),
+            model: HashMap::new(),
+        }
+    }
 }
