@@ -90,18 +90,13 @@ impl Application for ApplicationWinit {
                     Event::Resumed => {}
                     Event::MainEventsCleared => {
                         keyboard::update();
+                        self.graphics.update();
                         self.update();
 
                         self.window.request_redraw();
                     }
                     Event::RedrawRequested(window_id) if window_id == self.window.id() => {
-                        match self.graphics.render() {
-                            Ok(_) => {}
-                            Err(wgpu::SurfaceError::Lost) => self.graphics.surface_refresh(),
-                            Err(wgpu::SurfaceError::OutOfMemory) => Self::exit(),
-                            // All other errors (Outdated, Timeout) should be resolved by the next frame
-                            Err(e) => eprintln!("{:?}", e),
-                        }
+                        self.graphics.render();
                     }
                     Event::RedrawEventsCleared => {}
                     Event::LoopDestroyed => {

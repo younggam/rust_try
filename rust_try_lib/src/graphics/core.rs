@@ -1,12 +1,11 @@
 use super::elements::*;
 use super::window::Window;
 
-use std::collections::HashMap;
-
 use wgpu::util::DeviceExt;
 
 use cgmath::*;
 
+///Uses Instancing not Dynamic Batching.
 pub struct GraphicsCore {
     surface: wgpu::Surface,
     surface_config: wgpu::SurfaceConfiguration,
@@ -17,10 +16,23 @@ pub struct GraphicsCore {
 
     depth_texture: Texture,
 
-    indices_count: u32,
-    index_buffer: wgpu::Buffer,
+    output_frame: Option<wgpu::SurfaceTexture>,
+
+    render_pass: Option<wgpu::RenderPass>,
+
+    vertices: Box<[ColorVertex]>,
+    vertices_count: usize,
     vertex_buffer: wgpu::Buffer,
+
+    indices: Box<[u32]>,
+    indices_count: usize,
+    index_buffer: wgpu::Buffer,
+
+    instances: Box<[Instance]>,
+    instances_count: usize,
     instance_buffer: wgpu::Buffer,
+
+    last_mesh_id: Option<u32>,
 }
 
 impl GraphicsCore {
@@ -125,8 +137,10 @@ impl GraphicsCore {
         let depth_texture =
             Texture::create_depth_texture(&device, &surface_config, "Depth Texture");
 
-        let indices = vec![0u16, 1, 2];
-        let indices_count = indices.len() as u32;
+        let mut indices = Vec::with_capacity(8 * 1024);
+        let indices_count = 0usize;
+        unsafe { indices.set_len(8 * 1024) };
+        let indices = indices.into_boxed_slice();
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
@@ -134,11 +148,10 @@ impl GraphicsCore {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        let vertices = vec![
-            ColorVertex::new([0.0, 0.5, 0.0, 5.0], [0.0, 1.0, 0.0, 1.0]),
-            ColorVertex::new([-0.5, -0.5, 0.0, 5.0], [1.0, 0.0, 0.0, 1.0]),
-            ColorVertex::new([0.5, -0.5, 0.0, 5.0], [0.0, 0.0, 1.0, 1.0]),
-        ];
+        let mut vertices = Vec::with_capacity(1024);
+        let vertices_count = 0usize;
+        unsafe { vertices.set_len(1024) };
+        let vertices = vertices.into_boxed_slice();
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
@@ -146,23 +159,28 @@ impl GraphicsCore {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        let mut instances = Vec::with_capacity(100);
-        let axis: Vector3<f32> = vec3(0.0, 0.0, 1.0) / 1.0f32.sqrt();
-        for i in 0..10 {
-            for j in 0..10 {
-                let k = (i * 10 + j * 100) as f32 * std::f32::consts::PI / 360.0;
-                instances.push(Instance::new(
-                    vec3(0.9 - 0.2 * i as f32, 0.9 - 0.2 * j as f32, 0.5),
-                    Quaternion::from_sv(0.0, k.sin() * axis),
-                ))
-            }
-        }
+        let mut instances = Vec::with_capacity(1024);
+        let instances_count = 0usize;
+        unsafe { instances.set_len(1024) };
+        let instances = instances.into_boxed_slice();
+        // let axis: Vector3<f32> = vec3(0.0, 0.0, 1.0) / 1.0f32.sqrt();
+        // for i in 0..10 {
+        //     for j in 0..10 {
+        //         let k = (i * 10 + j * 100) as f32 * std::f32::consts::PI / 360.0;
+        //         instances.push(Instance::new(
+        //             vec3(0.9 - 0.2 * i as f32, 0.9 - 0.2 * j as f32, 0.5),
+        //             Quaternion::from_sv(0.0, k.sin() * axis),
+        //         ))
+        //     }
+        // }
 
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance Buffer"),
             contents: bytemuck::cast_slice(&instances),
             usage: wgpu::BufferUsages::VERTEX,
         });
+
+        println!("{:#?}", wgpu::Limits::default());
 
         Self {
             surface,
@@ -175,30 +193,60 @@ impl GraphicsCore {
 
             depth_texture,
 
+            output_frame: None,
+
+            render_pass: None,
+
+            vertices,
+            vertices_count,
+            vertex_buffer,
+
+            indices,
             indices_count,
             index_buffer,
-            vertex_buffer,
-            instance_buffer,
-        }
-    }
 
-    pub fn surface_refresh(&self) {
-        self.surface.configure(&self.device, &self.surface_config);
+            instances,
+            instances_count,
+            instance_buffer,
+
+            last_mesh_id: None,
+        }
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
             self.surface_config.width = width;
             self.surface_config.height = height;
-            self.surface_refresh();
+            self.surface.configure(&self.device, &self.surface_config);
             self.depth_texture =
                 Texture::create_depth_texture(&self.device, &self.surface_config, "depth_texture");
         }
     }
 
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let output = self.surface.get_current_texture()?;
-        let view = output
+    pub fn update(&mut self) {
+        self.output_frame = match self.surface.get_current_texture() {
+            Ok(swap_chain_frame) => Some(swap_chain_frame),
+            Err(wgpu::SurfaceError::Outdated) => {
+                self.surface.configure(&self.device, &self.surface_config);
+                self.surface
+                    .get_current_texture()
+                    .expect("Error reconfiguring surface");
+                None
+            }
+            err => {
+                err.expect("Failed to acquire next swap chain texture!");
+                None
+            }
+        };
+    }
+
+    pub fn render(&mut self) {
+        let output_frame = match self.output_frame.take() {
+            Some(output_frame) => output_frame,
+            None => return,
+        };
+
+        let view = output_frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -235,28 +283,49 @@ impl GraphicsCore {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            render_pass.draw_indexed(0..self.indices_count, 0, 0..100);
+            render_pass.set_index_buffer(
+                self.index_buffer
+                    .slice(..self.indices_count as wgpu::BufferAddress),
+                wgpu::IndexFormat::Uint32,
+            );
+            render_pass.set_vertex_buffer(
+                0,
+                self.vertex_buffer
+                    .slice(..self.vertices_count as wgpu::BufferAddress),
+            );
+            render_pass.set_vertex_buffer(
+                1,
+                self.instance_buffer
+                    .slice(..self.instances_count as wgpu::BufferAddress),
+            );
+            render_pass.draw_indexed(
+                0..self.indices_count as u32,
+                0,
+                0..self.instances_count as u32,
+            );
         }
-        self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
-
-        Ok(())
+        let command_buffer = encoder.finish();
+        println!("{:#?}", command_buffer);
+        self.queue.submit(std::iter::once(command_buffer));
+        output_frame.present();
     }
-}
 
-pub struct Batch {
-    buffers: HashMap<u32, (wgpu::Buffer, wgpu::Buffer)>,
-    model: HashMap<u32, Vec<Instance>>,
-}
+    pub fn draw(&mut self, mesh: Mesh, position: Vector3<f32>, rotation: Quaternion<f32>) {
+        if let Some(last_mesh_id) = self.last_mesh_id {
+            if last_mesh_id != mesh.id() {
+                self.vertices[..mesh.vertices().len()].copy_from_slice(mesh.vertices());
+                self.vertices_count = mesh.vertices().len();
 
-impl Batch {
-    pub fn new() -> Self {
-        Self {
-            buffers: HashMap::new(),
-            model: HashMap::new(),
+                self.indices[..mesh.indices().len()].copy_from_slice(mesh.indices());
+                self.indices_count = mesh.indices().len();
+
+                self.instances[0] = Instance::new(position, rotation);
+                self.instances_count = 1;
+            } else {
+                self.instances[self.instances_count] = Instance::new(position, rotation);
+                self.instances_count += 1;
+            }
         }
+        self.last_mesh_id = Some(mesh.id());
     }
 }
