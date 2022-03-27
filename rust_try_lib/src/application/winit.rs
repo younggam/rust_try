@@ -40,6 +40,30 @@ impl ApplicationWinit {
             scene.update();
         }
     }
+
+    fn draw(&mut self) {
+        use crate::graphics::elements::*;
+        use cgmath::*;
+        let colored_triangle = Mesh::new(
+            vec![
+                ColorVertex::new([0.0, 0.5, 0.0, 5.0], [0.0, 1.0, 0.0, 1.0]),
+                ColorVertex::new([-0.5, -0.5, 0.0, 5.0], [1.0, 0.0, 0.0, 1.0]),
+                ColorVertex::new([0.5, -0.5, 0.0, 5.0], [0.0, 0.0, 1.0, 1.0]),
+            ],
+            vec![0, 1, 2],
+        );
+        let axis: Vector3<f32> = vec3(0.0, 0.0, 1.0) / 1.0f32.sqrt();
+        for i in 0..10 {
+            for j in 0..10 {
+                let k = (i * 10 + j * 100) as f32 * std::f32::consts::PI / 360.0;
+                self.graphics.draw(
+                    &colored_triangle,
+                    vec3(0.9 - 0.2 * i as f32, 0.9 - 0.2 * j as f32, 0.5),
+                    Quaternion::from_sv(0.0, k.sin() * axis),
+                );
+            }
+        }
+    }
 }
 
 impl Application for ApplicationWinit {
@@ -92,10 +116,11 @@ impl Application for ApplicationWinit {
                         keyboard::update();
                         self.graphics.update();
                         self.update();
+                        self.draw();
 
                         self.window.request_redraw();
                     }
-                    Event::RedrawRequested(window_id) if window_id == self.window.id() => {
+                    Event::RedrawRequested(_window_id) /*if window_id == self.window.id()*/=> {
                         self.graphics.render();
                     }
                     Event::RedrawEventsCleared => {}
