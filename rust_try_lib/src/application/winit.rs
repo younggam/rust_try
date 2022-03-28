@@ -52,14 +52,26 @@ impl ApplicationWinit {
             ],
             vec![0, 1, 2],
         );
-        let axis: Vector3<f32> = vec3(0.0, 0.0, 1.0) / 1.0f32.sqrt();
+        let black_triangle = Mesh::new(
+            vec![
+                ColorVertex::new([0.0, 0.5, 0.0, 5.0], [0.0, 0.0, 0.0, 1.0]),
+                ColorVertex::new([-0.5, -0.5, 0.0, 5.0], [0.0, 0.0, 0.0, 1.0]),
+                ColorVertex::new([0.5, -0.5, 0.0, 5.0], [0.0, 0.0, 0.0, 1.0]),
+            ],
+            vec![0, 1, 2],
+        );
+        let axis: Vector3<f32> = vec3(1.0, 1.0, 1.0) / 3.0f32.sqrt();
         for i in 0..10 {
             for j in 0..10 {
-                let k = (i * 10 + j * 100) as f32 * std::f32::consts::PI / 360.0;
+                let k = 0f32; //= (i * 10 + j * 100) as f32 * std::f32::consts::PI / 360.0;
                 self.graphics.draw(
-                    &colored_triangle,
+                    if (i + j) % 2 == 0 {
+                        &colored_triangle
+                    } else {
+                        &black_triangle
+                    },
                     vec3(0.9 - 0.2 * i as f32, 0.9 - 0.2 * j as f32, 0.5),
-                    Quaternion::from_sv(0.0, k.sin() * axis),
+                    Quaternion::from_sv(k.cos(), k.sin() * axis),
                 );
             }
         }
