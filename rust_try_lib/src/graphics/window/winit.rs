@@ -2,6 +2,8 @@ use super::Window;
 
 use raw_window_handle::*;
 
+use winit::dpi::PhysicalSize;
+
 pub struct WindowWinit {
     inner: winit::window::Window,
 }
@@ -25,12 +27,16 @@ impl Window for WindowWinit {
     }
 
     fn inner_size(&self) -> (u32, u32) {
-        let winit::dpi::PhysicalSize { width, height } = self.inner.inner_size();
+        let PhysicalSize { width, height } = self.inner.inner_size();
         (width, height)
     }
 
+    fn set_inner_size(&self, width: u32, height: u32) {
+        self.inner.set_inner_size(PhysicalSize { width, height });
+    }
+
     fn outer_size(&self) -> (u32, u32) {
-        let winit::dpi::PhysicalSize { width, height } = self.inner.outer_size();
+        let PhysicalSize { width, height } = self.inner.outer_size();
         (width, height)
     }
 

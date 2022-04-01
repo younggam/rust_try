@@ -11,6 +11,8 @@ pub trait Window: raw_window_handle::HasRawWindowHandle {
     ///Phyiscal size of the window, excluding the title bar and borders.
     fn inner_size(&self) -> (u32, u32);
 
+    fn set_inner_size(&self, width: u32, height: u32);
+
     //TODO: make wrapper type
     ///Phyiscal size of the window, including the title bar and borders.
     fn outer_size(&self) -> (u32, u32);

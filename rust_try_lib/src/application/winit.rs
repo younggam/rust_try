@@ -1,7 +1,7 @@
 use crate::application::*;
 use crate::*;
 use graphics::window::*;
-use graphics::GraphicsCore;
+use graphics::Batch;
 use input::keyboard;
 use time;
 
@@ -12,10 +12,8 @@ extern crate winit as dep;
 use dep::{event::*, event_loop::*};
 
 pub struct ApplicationWinit {
-    //dependency specific
-    window: WindowWinit,
     event_loop: Cell<Option<EventLoop<()>>>,
-    graphics: GraphicsCore,
+    batch: Batch<WindowWinit>,
 
     //common implementation
     scene: Option<Box<dyn Scene>>,
@@ -28,8 +26,7 @@ impl ApplicationWinit {
 
         Self {
             event_loop: Cell::new(Some(event_loop)),
-            graphics: pollster::block_on(GraphicsCore::new(&window)),
-            window,
+            batch: Batch::new(window),
 
             scene: Some(Box::new(initial_scene)),
         }
@@ -42,38 +39,8 @@ impl ApplicationWinit {
     }
 
     fn draw(&mut self) {
-        use crate::graphics::elements::*;
-        use cgmath::*;
-        let colored_triangle = Mesh::new(
-            vec![
-                ColorVertex::new([0.0, 0.5, 0.0, 5.0], [0.0, 1.0, 0.0, 1.0]),
-                ColorVertex::new([-0.5, -0.5, 0.0, 5.0], [1.0, 0.0, 0.0, 1.0]),
-                ColorVertex::new([0.5, -0.5, 0.0, 5.0], [0.0, 0.0, 1.0, 1.0]),
-            ],
-            vec![0, 1, 2],
-        );
-        let black_triangle = Mesh::new(
-            vec![
-                ColorVertex::new([0.0, 0.5, 0.0, 5.0], [0.0, 0.0, 0.0, 1.0]),
-                ColorVertex::new([-0.5, -0.5, 0.0, 5.0], [0.0, 0.0, 0.0, 1.0]),
-                ColorVertex::new([0.5, -0.5, 0.0, 5.0], [0.0, 0.0, 0.0, 1.0]),
-            ],
-            vec![0, 1, 2],
-        );
-        let axis: Vector3<f32> = vec3(1.0, 1.0, 1.0).normalize();
-        for i in 0..10 {
-            for j in 0..10 {
-                let k = 0f32; //= (i * 10 + j * 100) as f32 * std::f32::consts::PI / 360.0;
-                self.graphics.draw(
-                    if (i + j) % 2 == 0 {
-                        &colored_triangle
-                    } else {
-                        &black_triangle
-                    },
-                    vec3(0.9 - 0.2 * i as f32, 0.9 - 0.2 * j as f32, 0.5),
-                    Quaternion::from_sv(k.cos(), k.sin() * axis),
-                );
-            }
+        if let Some(ref scene) = self.scene {
+            scene.draw(&mut self.batch);
         }
     }
 }
@@ -105,16 +72,16 @@ impl Application for ApplicationWinit {
                         }
                         _ => {}
                     },
-                    Event::WindowEvent { window_id, event } if window_id == self.window.id() => {
+                    Event::WindowEvent { window_id, event } if window_id == self.window().id() => {
                         match event {
                             WindowEvent::Resized(phyiscal_size) => {
-                                self.graphics
+                                self.batch.core_mut()
                                     .resize(phyiscal_size.width, phyiscal_size.height);
                             }
                             WindowEvent::CloseRequested => Self::exit(),
                             WindowEvent::KeyboardInput { input, .. } => handle_keyboard(input),
                             WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                                self.graphics
+                                self.batch.core_mut()
                                     .resize(new_inner_size.width, new_inner_size.height);
                             }
                             _ => {}
@@ -126,14 +93,14 @@ impl Application for ApplicationWinit {
                     Event::Resumed => {}
                     Event::MainEventsCleared => {
                         keyboard::update();
-                        self.graphics.update();
+                        self.batch.core_mut().update();
                         self.update();
                         self.draw();
 
-                        self.window.request_redraw();
+                        self.window().request_redraw();
                     }
                     Event::RedrawRequested(_window_id) /*if window_id == self.window.id()*/=> {
-                        self.graphics.render();
+                        self.batch.present();
                     }
                     Event::RedrawEventsCleared => {}
                     Event::LoopDestroyed => {
@@ -157,7 +124,7 @@ impl Application for ApplicationWinit {
     }
 
     fn window(&self) -> &Self::Window {
-        &self.window
+        &self.batch.core().window()
     }
 }
 

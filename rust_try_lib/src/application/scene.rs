@@ -1,7 +1,12 @@
+use crate::graphics::window::WindowWinit;
+use crate::graphics::Batch;
+
 pub trait Scene: Send {
     fn enter(&mut self);
 
     fn update(&mut self);
+
+    fn draw(&self, graphics: &mut Batch<WindowWinit>);
 
     fn should_exit(&self);
 
