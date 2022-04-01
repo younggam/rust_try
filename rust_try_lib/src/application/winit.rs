@@ -60,7 +60,7 @@ impl ApplicationWinit {
             ],
             vec![0, 1, 2],
         );
-        let axis: Vector3<f32> = vec3(1.0, 1.0, 1.0) / 3.0f32.sqrt();
+        let axis: Vector3<f32> = vec3(1.0, 1.0, 1.0).normalize();
         for i in 0..10 {
             for j in 0..10 {
                 let k = 0f32; //= (i * 10 + j * 100) as f32 * std::f32::consts::PI / 360.0;
