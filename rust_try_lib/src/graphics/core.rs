@@ -1,6 +1,8 @@
 use super::elements::*;
+use crate::utils::LazyManual;
 
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use winit::window::Window;
 
@@ -8,19 +10,21 @@ use wgpu::util::DeviceExt;
 
 use cgmath::*;
 
+static CORE: LazyManual<GraphicsCore> = LazyManual::new();
+
 ///Uses Instancing not Dynamic Batching.
 pub struct GraphicsCore {
     window: Window,
     surface: wgpu::Surface,
-    surface_config: wgpu::SurfaceConfiguration,
+    surface_config: Mutex<wgpu::SurfaceConfiguration>,
 
     device: wgpu::Device,
     queue: wgpu::Queue,
 
-    depth_texture: Texture,
+    depth_texture: Mutex<Texture>,
 
     surface_texture: Option<wgpu::SurfaceTexture>,
-    surface_texture_view: Option<wgpu::TextureView>,
+    surface_texture_view: Mutex<Option<wgpu::TextureView>>,
 }
 
 impl GraphicsCore {
@@ -66,15 +70,15 @@ impl GraphicsCore {
         Self {
             window,
             surface,
-            surface_config,
+            surface_config: Mutex::new(surface_config),
 
             device,
             queue,
 
-            depth_texture,
+            depth_texture: Mutex::new(depth_texture),
 
             surface_texture: None,
-            surface_texture_view: None,
+            surface_texture_view: Mutex::new(None),
         }
     }
 
@@ -86,49 +90,54 @@ impl GraphicsCore {
         let window_size = self.window.inner_size();
 
         if new_size.width > 0 && new_size.height > 0 && window_size == new_size {
-            self.surface_config.width = new_size.width;
-            self.surface_config.height = new_size.height;
+            let mut surface_config = self.surface_config.lock().unwrap();
+            surface_config.width = new_size.width;
+            surface_config.height = new_size.height;
 
             self.surface_texture = None;
-            self.surface_texture_view = None;
+            *self.surface_texture_view.lock().unwrap() = None;
 
-            self.surface.configure(&self.device, &self.surface_config);
-            self.depth_texture =
-                Texture::create_depth_texture(&self.device, &self.surface_config, "depth_texture");
+            self.surface.configure(&self.device, &surface_config);
+
+            *self.depth_texture.lock().unwrap() =
+                Texture::create_depth_texture(&self.device, &surface_config, "depth_texture");
         }
     }
 
     pub fn update(&mut self) {
-        if let None = self.surface_texture {
-            self.surface_texture = match self.surface.get_current_texture() {
-                Ok(surface_texture) => {
-                    self.surface_texture_view = Some(
-                        surface_texture
-                            .texture
-                            .create_view(&wgpu::TextureViewDescriptor::default()),
-                    );
-
-                    Some(surface_texture)
-                }
-                Err(wgpu::SurfaceError::Outdated) => {
-                    self.surface.configure(&self.device, &self.surface_config);
-
-                    Some(
-                        self.surface
-                            .get_current_texture()
-                            .expect("Error reconfiguring surface"),
-                    )
-                }
-                err => Some(err.expect("Failed to acquire next swap chain texture!")),
-            };
+        if let Some(_) = self.surface_texture {
+            return;
         }
+
+        self.surface_texture = match self.surface.get_current_texture() {
+            Ok(surface_texture) => {
+                *self.surface_texture_view.lock().unwrap() = Some(
+                    surface_texture
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default()),
+                );
+
+                Some(surface_texture)
+            }
+            Err(wgpu::SurfaceError::Outdated) => {
+                self.surface
+                    .configure(&self.device, &self.surface_config.lock().unwrap());
+
+                Some(
+                    self.surface
+                        .get_current_texture()
+                        .expect("Error reconfiguring surface"),
+                )
+            }
+            err => Some(err.expect("Failed to acquire next swap chain texture!")),
+        };
     }
 
     pub fn present(&mut self) {
         if let Some(surface_texture) = self.surface_texture.take() {
             surface_texture.present();
         }
-        self.surface_texture_view = None;
+        *self.surface_texture_view.lock().unwrap() = None;
     }
 }
 
@@ -177,7 +186,7 @@ impl Batch {
                     module: &shader,
                     entry_point: "fs_main",
                     targets: &[wgpu::ColorTargetState {
-                        format: core.surface_config.format,
+                        format: core.surface_config.lock().unwrap().format,
                         blend: Some(wgpu::BlendState {
                             alpha: wgpu::BlendComponent::REPLACE,
                             color: wgpu::BlendComponent::REPLACE,
@@ -270,8 +279,9 @@ impl Batch {
     }
 
     pub fn flush(&mut self) {
-        let surface_texture_view = match self.core.surface_texture_view {
-            Some(ref mut surface_texture_view) => surface_texture_view,
+        let surface_texture_view = self.core.surface_texture_view.lock().unwrap();
+        let surface_texture_view = match *surface_texture_view {
+            Some(ref surface_texture_view) => surface_texture_view,
             _ => unsafe {
                 debug_assert!(false, "Attempted to use None value.");
                 std::hint::unreachable_unchecked()
@@ -286,6 +296,7 @@ impl Batch {
                 });
 
         {
+            let depth_texture_view = &self.core.depth_texture.lock().unwrap().view;
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[wgpu::RenderPassColorAttachment {
@@ -302,7 +313,7 @@ impl Batch {
                     },
                 }],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.core.depth_texture.view,
+                    view: depth_texture_view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: true,
