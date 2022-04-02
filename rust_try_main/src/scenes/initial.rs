@@ -1,7 +1,6 @@
 use rust_try_lib::application::Scene;
 use rust_try_lib::cgmath::*;
 use rust_try_lib::graphics::elements::*;
-use rust_try_lib::graphics::window::WindowWinit;
 use rust_try_lib::graphics::Batch;
 
 pub struct InitialScene;
@@ -11,7 +10,7 @@ impl Scene for InitialScene {
 
     fn update(&mut self) {}
 
-    fn draw(&self, graphics: &mut Batch<WindowWinit>) {
+    fn draw(&self, graphics: &mut Batch) {
         let colored_triangle = Mesh::new(
             vec![
                 ColorVertex::new([0.0, 0.5, 0.0, 5.0], [0.0, 1.0, 0.0, 1.0]),

@@ -1,15 +1,16 @@
 use super::elements::*;
-use super::window::Window;
 
 use std::collections::HashMap;
+
+use winit::window::Window;
 
 use wgpu::util::DeviceExt;
 
 use cgmath::*;
 
 ///Uses Instancing not Dynamic Batching.
-pub struct GraphicsCore<W: Window> {
-    window: W,
+pub struct GraphicsCore {
+    window: Window,
     surface: wgpu::Surface,
     surface_config: wgpu::SurfaceConfiguration,
 
@@ -22,8 +23,8 @@ pub struct GraphicsCore<W: Window> {
     surface_texture_view: Option<wgpu::TextureView>,
 }
 
-impl<W: Window> GraphicsCore<W> {
-    pub(crate) async fn new(window: W) -> Self {
+impl GraphicsCore {
+    pub(crate) async fn new(window: Window) -> Self {
         let instance = wgpu::Instance::new(wgpu::Backends::VULKAN);
         let surface = unsafe { instance.create_surface(&window) };
         let adapter = instance
@@ -53,8 +54,8 @@ impl<W: Window> GraphicsCore<W> {
             format: surface
                 .get_preferred_format(&adapter)
                 .expect("Surface is incompatible with the adapter"),
-            width: size.0,
-            height: size.1,
+            width: size.width,
+            height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
         };
         surface.configure(&device, &surface_config);
@@ -77,20 +78,16 @@ impl<W: Window> GraphicsCore<W> {
         }
     }
 
-    pub fn window(&self) -> &W {
+    pub fn window(&self) -> &Window {
         &self.window
     }
 
-    pub(crate) fn resize(&mut self, new_width: u32, new_height: u32) {
-        let (window_width, window_height) = self.window.inner_size();
+    pub(crate) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        let window_size = self.window.inner_size();
 
-        if new_width > 0
-            && new_height > 0
-            && new_width == window_width
-            && new_height == window_height
-        {
-            self.surface_config.width = new_width;
-            self.surface_config.height = new_height;
+        if new_size.width > 0 && new_size.height > 0 && window_size == new_size {
+            self.surface_config.width = new_size.width;
+            self.surface_config.height = new_size.height;
 
             self.surface_texture = None;
             self.surface_texture_view = None;
@@ -135,8 +132,8 @@ impl<W: Window> GraphicsCore<W> {
     }
 }
 
-pub struct Batch<W: Window> {
-    core: GraphicsCore<W>,
+pub struct Batch {
+    core: GraphicsCore,
 
     render_pipeline: wgpu::RenderPipeline,
 
@@ -149,8 +146,8 @@ pub struct Batch<W: Window> {
     last_mesh_id: Option<u32>,
 }
 
-impl<W: Window> Batch<W> {
-    pub fn new(window: W) -> Self {
+impl Batch {
+    pub fn new(window: Window) -> Self {
         let core = pollster::block_on(GraphicsCore::new(window));
 
         let render_pipeline_layout =
@@ -240,11 +237,11 @@ impl<W: Window> Batch<W> {
         }
     }
 
-    pub fn core_mut(&mut self) -> &mut GraphicsCore<W> {
+    pub fn core_mut(&mut self) -> &mut GraphicsCore {
         &mut self.core
     }
 
-    pub fn core(&self) -> &GraphicsCore<W> {
+    pub fn core(&self) -> &GraphicsCore {
         &self.core
     }
 

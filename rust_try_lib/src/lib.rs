@@ -24,8 +24,6 @@ pub mod application {
     leaf_mod! {pub application}
     leaf_mod! {pub event}
     leaf_mod! {pub scene}
-    #[cfg(feature = "winit")]
-    leaf_mod! {pub winit}
 }
 
 pub mod graphics {
@@ -34,12 +32,6 @@ pub mod graphics {
         leaf_mod! {pub texture}
         // leaf_mod! {pub uniform}
         leaf_mod! {pub vertex}
-    }
-
-    pub mod window {
-        leaf_mod! {pub window}
-        #[cfg(feature = "winit")]
-        leaf_mod! {pub winit}
     }
 
     leaf_mod! {pub camera}
