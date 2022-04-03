@@ -246,7 +246,13 @@ impl Batch {
         &self.window_and_surface
     }
 
-    pub fn draw(&mut self, mesh: &Mesh, position: Vector3<f32>, rotation: Quaternion<f32>) {
+    pub fn draw(
+        &mut self,
+        mesh: &Mesh,
+        position: Point3<f32>,
+        rotation: Quaternion<f32>,
+        scale: Vector3<f32>,
+    ) {
         let mesh_id = mesh.id();
 
         match self.last_mesh_id {
@@ -258,7 +264,7 @@ impl Batch {
             }
         }
 
-        let instance = Instance::new(position, rotation);
+        let instance = Instance::new(position, rotation, scale);
         if let Some(value) = self.instances.get_mut(&mesh_id) {
             value.push(instance);
         } else {

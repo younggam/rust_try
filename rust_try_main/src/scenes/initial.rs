@@ -30,18 +30,16 @@ impl Scene for InitialScene {
         let axis: Vector3<f32> = vec3(1.0, 1.0, 1.0).normalize();
         for i in 0..10 {
             for j in 0..10 {
-                // if i == 3 && j == 4 {
-                //     graphics.resize(500, 500);
-                // }
-                let k = 0f32; //= (i * 10 + j * 100) as f32 * std::f32::consts::PI / 360.0;
+                let k = (i * 10 + j * 100) as f32 * std::f32::consts::PI / 360.0;
                 graphics.draw(
                     if (i + j) % 2 == 0 {
                         &colored_triangle
                     } else {
                         &black_triangle
                     },
-                    vec3(0.9 - 0.2 * i as f32, 0.9 - 0.2 * j as f32, 0.5),
+                    point3(0.9 - 0.2 * i as f32, 0.9 - 0.2 * j as f32, 0.5),
                     Quaternion::from_sv(k.cos(), k.sin() * axis),
+                    vec3(1.0, 1.0, 1.0),
                 );
             }
         }
@@ -55,3 +53,73 @@ impl Scene for InitialScene {
 
     fn force_exit(&mut self) {}
 }
+
+//
+
+pub struct Transform {
+    position: Point3<f32>,
+    rotation: Quaternion<f32>,
+    scale: Vector3<f32>,
+}
+
+impl Transform {
+    pub fn new(position: Point3<f32>, rotation: Quaternion<f32>, scale: Vector3<f32>) -> Self {
+        Self {
+            position,
+            rotation,
+            scale,
+        }
+    }
+
+    pub fn r#move(&mut self, velocity: Vector3<f32>) {
+        self.position += velocity;
+    }
+
+    pub fn rotate(&mut self, rotation: Quaternion<f32>) {
+        self.rotation = rotation * self.rotation;
+    }
+
+    pub fn scale_adjust(&mut self, scale: Vector3<f32>) {
+        self.scale += scale;
+    }
+}
+
+impl From<Point3<f32>> for Transform {
+    fn from(position: Point3<f32>) -> Self {
+        Self {
+            position,
+            rotation: Quaternion::one(),
+            scale: vec3(1.0, 1.0, 1.0),
+        }
+    }
+}
+
+impl From<Quaternion<f32>> for Transform {
+    fn from(rotation: Quaternion<f32>) -> Self {
+        Self {
+            position: point3(0.0, 0.0, 0.0),
+            rotation: rotation,
+            scale: vec3(1.0, 1.0, 1.0),
+        }
+    }
+}
+
+impl From<Vector3<f32>> for Transform {
+    fn from(scale: Vector3<f32>) -> Self {
+        Self {
+            position: point3(0.0, 0.0, 0.0),
+            rotation: Quaternion::one(),
+            scale,
+        }
+    }
+}
+
+//
+
+pub struct Camera {
+    transform: Transform,
+    speed: f32,
+    front: Vector3<f32>,
+}
+
+pub struct Projection {}

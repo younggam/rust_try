@@ -43,25 +43,30 @@ impl Vertex for ColorVertex {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Instance {
-    transform: [[f32; 4]; 4],
+    transform_matrix: [[f32; 4]; 4],
 }
 
 impl Instance {
-    pub fn new(position: Vector3<f32>, rotation: Quaternion<f32>) -> Self {
+    pub fn new(position: Point3<f32>, rotation: Quaternion<f32>, scale: Vector3<f32>) -> Self {
         Self {
-            transform: (Matrix4::from_translation(position) * Matrix4::from(rotation)).into(),
+            transform_matrix: (Matrix4::from_translation(position.to_vec())
+                * Matrix4::from(rotation)
+                * Matrix4::from_nonuniform_scale(scale.x, scale.y, scale.z))
+            .into(),
         }
     }
 
-    pub fn from_translation(value: Vector3<f32>) -> Self {
+    pub fn from_transform_matrix(transform_matrix: Matrix4<f32>) -> Self {
         Self {
-            transform: Matrix4::from_translation(value).into(),
+            transform_matrix: transform_matrix.into(),
         }
     }
+}
 
-    pub fn from_transform(transform: Matrix4<f32>) -> Self {
+impl From<Point3<f32>> for Instance {
+    fn from(point: Point3<f32>) -> Self {
         Self {
-            transform: transform.into(),
+            transform_matrix: Matrix4::from_translation(point.to_vec()).into(),
         }
     }
 }
