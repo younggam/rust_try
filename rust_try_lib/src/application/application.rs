@@ -1,15 +1,14 @@
-use crate::*;
-use application::Scene;
-use graphics::Batch;
-use input::keyboard;
-use time;
+use crate::{application::Scene, graphics::Batch, input::keyboard, time};
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 //kinda.. side-effect of my modular practice
-use winit::window::{Window, WindowBuilder};
-use winit::{event::*, event_loop::*};
+use winit::{
+    event::*,
+    event_loop::*,
+    window::{Window, WindowBuilder},
+};
 
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 
@@ -38,7 +37,7 @@ impl Application {
     }
 
     fn window(&self) -> &Window {
-        &self.batch.core().window()
+        &self.batch.window_and_surface().window()
     }
 
     fn init(&mut self) {
@@ -80,13 +79,13 @@ impl Application {
                     Event::WindowEvent { window_id, event } if window_id == self.window().id() => {
                         match event {
                             WindowEvent::Resized(new_inner_size) => {
-                                self.batch.core_mut()
+                                self.batch.window_and_surface_mut()
                                     .resize(new_inner_size);
                             }
                             WindowEvent::CloseRequested => Self::exit(),
                             WindowEvent::KeyboardInput { input, .. } => handle_keyboard(input),
                             WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                                self.batch.core_mut()
+                                self.batch.window_and_surface_mut()
                                     .resize(*new_inner_size);
                             }
                             _ => {}
@@ -98,7 +97,7 @@ impl Application {
                     Event::Resumed => {}
                     Event::MainEventsCleared => {
                         keyboard::update();
-                        self.batch.core_mut().update();
+                        self.batch.window_and_surface_mut().update();
                         self.update();
                         self.draw();
 

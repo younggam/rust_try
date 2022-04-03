@@ -1,8 +1,7 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
-use crate::utils::BoxedAny;
-use crate::*;
+use crate::{utils::BoxedAny, *};
 
 ///Literally registers events and correspond listeners.
 ///events can be any type but 'static.
