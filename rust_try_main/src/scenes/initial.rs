@@ -3,7 +3,17 @@ use rust_try_lib::cgmath::*;
 use rust_try_lib::graphics::elements::*;
 use rust_try_lib::graphics::Batch;
 
-pub struct InitialScene;
+pub struct InitialScene {
+    camera: Camera,
+}
+
+impl InitialScene {
+    pub fn new() -> Self {
+        Self {
+            camera: Camera::new(point3(0.0, 0.0, 10.0), vec3(0.0, 0.0, -1.0), 1.0),
+        }
+    }
+}
 
 impl Scene for InitialScene {
     fn enter(&mut self) {}
@@ -119,7 +129,41 @@ impl From<Vector3<f32>> for Transform {
 pub struct Camera {
     transform: Transform,
     speed: f32,
-    front: Vector3<f32>,
+}
+
+impl Camera {
+    const FRONT: Vector3<f32> = vec3(1.0, 0.0, 0.0);
+
+    pub fn new(position: Point3<f32>, front: Vector3<f32>, speed: f32) -> Self {
+        Self {
+            transform: Transform::new(
+                position,
+                Quaternion::from_arc(Self::FRONT, front, None),
+                vec3(1.0, 1.0, 1.0),
+            ),
+            speed,
+        }
+    }
+
+    pub fn position(&self) -> Point3<f32> {
+        self.transform.position
+    }
+
+    pub fn rotation(&self) -> Quaternion<f32> {
+        self.transform.rotation
+    }
+
+    pub fn scale(&self) -> Vector3<f32> {
+        self.transform.scale
+    }
+
+    pub fn view_matrix(&self) -> Matrix4<f32> {
+        Matrix4::look_to_rh(
+            self.position(),
+            self.rotation().rotate_vector(Self::FRONT),
+            vec3(0.0, 1.0, 0.0),
+        )
+    }
 }
 
 pub struct Projection {}
