@@ -67,13 +67,13 @@ impl MeshBuffer {
         let vertex_buffer =
             graphics::DEVICE.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Vertex Buffer {id}")),
-                contents: bytemuck::cast_slice(&vertices),
+                contents: bytemuck::cast_slice(vertices),
                 usage: wgpu::BufferUsages::VERTEX,
             });
 
         let index_buffer = graphics::DEVICE.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&format!("Index Buffer {id}")),
-            contents: bytemuck::cast_slice(&indices),
+            contents: bytemuck::cast_slice(indices),
             usage: wgpu::BufferUsages::INDEX,
         });
 

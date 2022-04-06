@@ -14,6 +14,13 @@ pub(crate) static INSTANCE: LazyManual<wgpu::Instance> = LazyManual::new();
 pub(crate) static DEVICE: LazyManual<wgpu::Device> = LazyManual::new();
 pub(crate) static QUEUE: LazyManual<wgpu::Queue> = LazyManual::new();
 
+pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::from_cols(
+    vec4(1.0, 0.0, 0.0, 0.0),
+    vec4(0.0, 1.0, 0.0, 0.0),
+    vec4(0.0, 0.0, 0.5, 0.0),
+    vec4(0.0, 0.0, 0.5, 1.0),
+);
+
 pub(crate) fn init(window: Window) -> WindowAndSurface {
     INSTANCE.init(wgpu::Instance::new(wgpu::Backends::VULKAN));
     let surface = unsafe { INSTANCE.create_surface(&window) };
@@ -82,7 +89,13 @@ impl WindowAndSurface {
         &self.window
     }
 
-    pub(crate) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+    pub fn aspect(&self) -> f32 {
+        let size = self.window.inner_size().cast::<f32>();
+        size.height / size.width
+    }
+
+    #[must_use]
+    pub(crate) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) -> bool {
         let window_size = self.window.inner_size();
 
         if new_size.width > 0 && new_size.height > 0 && window_size == new_size {
@@ -97,7 +110,10 @@ impl WindowAndSurface {
 
             *self.depth_texture.lock().unwrap() =
                 Texture::create_depth_texture(&surface_config, "depth_texture");
+
+            return true;
         }
+        false
     }
 
     pub fn update(&mut self) {
@@ -150,22 +166,43 @@ pub struct Batch {
     instance_buffer: wgpu::Buffer,
 
     last_mesh_id: Option<u32>,
+
+    camera: Camera,
+    projection: PerspectiveFov<f32>,
+    view_projection_buffer: wgpu::Buffer,
+    view_projection_bind_group: wgpu::BindGroup,
 }
 
 impl Batch {
     pub fn new(window: Window) -> Self {
         let window_and_surface = init(window);
 
+        let view_projection_bind_group_layout =
+            DEVICE.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some(""),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: Some(unsafe { std::num::NonZeroU64::new_unchecked(64) }),
+                    },
+                    count: None,
+                }],
+            });
+
         let render_pipeline_layout =
             DEVICE.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&view_projection_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
         let shader = DEVICE.create_shader_module(&include_wgsl!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../assets/shaders/shader.wgsl"
+            // "/../assets/shaders/shader.wgsl"
+            "/../assets/shaders/view_projection.wgsl"
         )));
 
         let render_pipeline = DEVICE.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -223,6 +260,32 @@ impl Batch {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
+        let camera = Camera::new(point3(0.0, 0.0, 10.0), vec3(0.0, 0.0, -1.0), 1.0);
+
+        let projection = PerspectiveFov {
+            fovy: Rad(std::f32::consts::FRAC_PI_4),
+            aspect: window_and_surface.aspect(),
+            near: 0.1,
+            far: 100.0,
+        };
+
+        let view_projection_buffer = DEVICE.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("View Projection Buffer"),
+            contents: bytemuck::cast_slice(AsRef::<[[f32; 4]; 4]>::as_ref(
+                &(OPENGL_TO_WGPU_MATRIX * camera.view_matrix() * Matrix4::<f32>::from(projection)),
+            )),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let view_projection_bind_group = DEVICE.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("View Projection Bind Group"),
+            layout: &view_projection_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: view_projection_buffer.as_entire_binding(),
+            }],
+        });
+
         Self {
             window_and_surface,
 
@@ -235,6 +298,11 @@ impl Batch {
             instance_buffer,
 
             last_mesh_id: None,
+
+            camera,
+            projection,
+            view_projection_buffer,
+            view_projection_bind_group,
         }
     }
 
@@ -244,6 +312,13 @@ impl Batch {
 
     pub fn window_and_surface(&self) -> &WindowAndSurface {
         &self.window_and_surface
+    }
+
+    pub(crate) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        if self.window_and_surface.resize(new_size) {
+            let new_size = new_size.cast::<f32>();
+            self.projection.aspect = new_size.height / new_size.width;
+        }
     }
 
     pub fn draw(
@@ -285,6 +360,16 @@ impl Batch {
             },
         };
 
+        QUEUE.write_buffer(
+            &self.view_projection_buffer,
+            0,
+            bytemuck::cast_slice(AsRef::<[[f32; 4]; 4]>::as_ref(
+                &(OPENGL_TO_WGPU_MATRIX
+                    * self.camera.view_matrix()
+                    * Matrix4::<f32>::from(self.projection)),
+            )),
+        );
+
         let mut encoder = DEVICE.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
         });
@@ -317,6 +402,8 @@ impl Batch {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.view_projection_bind_group, &[]);
+
             let mut instance_start = 0u64;
             for mesh_id in self.to_draw.drain(..) {
                 let mesh_buffer = match self.mesh_buffers.get(&mesh_id) {
@@ -369,5 +456,107 @@ impl Batch {
     pub fn present(&mut self) {
         self.flush();
         self.window_and_surface.present();
+    }
+}
+
+//
+
+pub struct Transform {
+    position: Point3<f32>,
+    rotation: Quaternion<f32>,
+    scale: Vector3<f32>,
+}
+
+impl Transform {
+    pub fn new(position: Point3<f32>, rotation: Quaternion<f32>, scale: Vector3<f32>) -> Self {
+        Self {
+            position,
+            rotation,
+            scale,
+        }
+    }
+
+    pub fn r#move(&mut self, velocity: Vector3<f32>) {
+        self.position += velocity;
+    }
+
+    pub fn rotate(&mut self, rotation: Quaternion<f32>) {
+        self.rotation = rotation * self.rotation;
+    }
+
+    pub fn scale_adjust(&mut self, scale: Vector3<f32>) {
+        self.scale += scale;
+    }
+}
+
+impl From<Point3<f32>> for Transform {
+    fn from(position: Point3<f32>) -> Self {
+        Self {
+            position,
+            rotation: Quaternion::one(),
+            scale: vec3(1.0, 1.0, 1.0),
+        }
+    }
+}
+
+impl From<Quaternion<f32>> for Transform {
+    fn from(rotation: Quaternion<f32>) -> Self {
+        Self {
+            position: point3(0.0, 0.0, 0.0),
+            rotation: rotation,
+            scale: vec3(1.0, 1.0, 1.0),
+        }
+    }
+}
+
+impl From<Vector3<f32>> for Transform {
+    fn from(scale: Vector3<f32>) -> Self {
+        Self {
+            position: point3(0.0, 0.0, 0.0),
+            rotation: Quaternion::one(),
+            scale,
+        }
+    }
+}
+
+//
+
+pub struct Camera {
+    transform: Transform,
+    speed: f32,
+}
+
+impl Camera {
+    const FRONT: Vector3<f32> = vec3(1.0, 0.0, 0.0);
+
+    pub fn new(position: Point3<f32>, front: Vector3<f32>, speed: f32) -> Self {
+        Self {
+            transform: Transform::new(
+                position,
+                Quaternion::from_arc(Self::FRONT, front, None),
+                vec3(1.0, 1.0, 1.0),
+            ),
+            speed,
+        }
+    }
+
+    pub fn position(&self) -> Point3<f32> {
+        self.transform.position
+    }
+
+    pub fn rotation(&self) -> Quaternion<f32> {
+        self.transform.rotation
+    }
+
+    pub fn scale(&self) -> Vector3<f32> {
+        self.transform.scale
+    }
+
+    pub fn view_matrix(&self) -> Matrix4<f32> {
+        Matrix4::look_to_rh(
+            self.position(),
+            self.rotation().rotate_vector(Self::FRONT),
+            vec3(0.0, 1.0, 0.0),
+        )
     }
 }

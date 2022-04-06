@@ -79,13 +79,13 @@ impl Application {
                     Event::WindowEvent { window_id, event } if window_id == self.window().id() => {
                         match event {
                             WindowEvent::Resized(new_inner_size) => {
-                                self.batch.window_and_surface_mut()
+                                self.batch
                                     .resize(new_inner_size);
                             }
                             WindowEvent::CloseRequested => Self::exit(),
                             WindowEvent::KeyboardInput { input, .. } => handle_keyboard(input),
                             WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                                self.batch.window_and_surface_mut()
+                                self.batch
                                     .resize(*new_inner_size);
                             }
                             _ => {}
