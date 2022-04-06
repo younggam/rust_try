@@ -91,7 +91,7 @@ impl WindowAndSurface {
 
     pub fn aspect(&self) -> f32 {
         let size = self.window.inner_size().cast::<f32>();
-        size.height / size.width
+        size.width / size.height
     }
 
     #[must_use]
@@ -260,7 +260,7 @@ impl Batch {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
-        let camera = Camera::new(point3(0.0, 0.0, 10.0), vec3(0.0, 0.0, -1.0), 1.0);
+        let camera = Camera::new(point3(0.0, 0.0, 5.0), vec3(0.0, 0.0, -1.0), 1.0);
 
         let projection = PerspectiveFov {
             fovy: Rad(std::f32::consts::FRAC_PI_4),
@@ -272,7 +272,7 @@ impl Batch {
         let view_projection_buffer = DEVICE.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("View Projection Buffer"),
             contents: bytemuck::cast_slice(AsRef::<[[f32; 4]; 4]>::as_ref(
-                &(OPENGL_TO_WGPU_MATRIX * camera.view_matrix() * Matrix4::<f32>::from(projection)),
+                &(OPENGL_TO_WGPU_MATRIX * Matrix4::<f32>::from(projection) * camera.view_matrix()),
             )),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -317,7 +317,7 @@ impl Batch {
     pub(crate) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if self.window_and_surface.resize(new_size) {
             let new_size = new_size.cast::<f32>();
-            self.projection.aspect = new_size.height / new_size.width;
+            self.projection.aspect = new_size.width / new_size.height;
         }
     }
 
@@ -365,8 +365,8 @@ impl Batch {
             0,
             bytemuck::cast_slice(AsRef::<[[f32; 4]; 4]>::as_ref(
                 &(OPENGL_TO_WGPU_MATRIX
-                    * self.camera.view_matrix()
-                    * Matrix4::<f32>::from(self.projection)),
+                    * Matrix4::<f32>::from(self.projection)
+                    * self.camera.view_matrix()),
             )),
         );
 
