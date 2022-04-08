@@ -1,19 +1,25 @@
-use crate::{application::Scene, graphics::Batch, input::keyboard, time};
+use crate::{
+    application::Scene,
+    graphics::{Batch, GraphicsCore},
+    input::keyboard,
+    time,
+};
 
 use std::cell::Cell;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 //kinda.. side-effect of my modular practice
-use winit::{
-    event::*,
-    event_loop::*,
-    window::{Window, WindowBuilder},
-};
+use winit::{event::*, event_loop::*, window::Window};
 
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 
 pub struct Application {
     event_loop: Cell<Option<EventLoop<()>>>,
+
+    graphics_core: Arc<GraphicsCore>,
     batch: Batch,
 
     //common implementation
@@ -23,14 +29,13 @@ pub struct Application {
 impl Application {
     pub fn new<S: 'static + Scene>(title: &'static str, initial_scene: S) -> Self {
         let event_loop = EventLoop::new();
-        let window = WindowBuilder::new()
-            .with_title(title)
-            .build(&event_loop)
-            .unwrap();
+        let graphics_core = Arc::new(pollster::block_on(GraphicsCore::new(title, &event_loop)));
 
         Self {
             event_loop: Cell::new(Some(event_loop)),
-            batch: Batch::new(window),
+
+            graphics_core,
+            batch: Batch::new(graphics_core),
 
             scene: Some(Box::new(initial_scene)),
         }

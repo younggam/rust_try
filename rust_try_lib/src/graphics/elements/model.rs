@@ -1,5 +1,4 @@
 use super::*;
-use crate::graphics;
 
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -37,8 +36,8 @@ impl Mesh {
         &self.indices
     }
 
-    pub fn to_buffer(&self) -> MeshBuffer {
-        MeshBuffer::new(self.id, &self.vertices, &self.indices)
+    pub fn to_buffer(&self, device: &wgpu::Device) -> MeshBuffer {
+        MeshBuffer::new(device, self.id, &self.vertices, &self.indices)
     }
 }
 
@@ -63,15 +62,14 @@ pub struct MeshBuffer {
 }
 
 impl MeshBuffer {
-    pub fn new(id: u32, vertices: &[ColorVertex], indices: &[u32]) -> Self {
-        let vertex_buffer =
-            graphics::DEVICE.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("Vertex Buffer {id}")),
-                contents: bytemuck::cast_slice(vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
+    pub fn new(device: &wgpu::Device, id: u32, vertices: &[ColorVertex], indices: &[u32]) -> Self {
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&format!("Vertex Buffer {id}")),
+            contents: bytemuck::cast_slice(vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
 
-        let index_buffer = graphics::DEVICE.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&format!("Index Buffer {id}")),
             contents: bytemuck::cast_slice(indices),
             usage: wgpu::BufferUsages::INDEX,

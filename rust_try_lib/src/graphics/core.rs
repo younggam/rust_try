@@ -1,18 +1,123 @@
 use super::elements::*;
-use crate::utils::LazyManual;
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::Arc;
 
-use winit::window::Window;
+use winit::window::{Window, WindowBuilder, WindowId};
 
 use wgpu::util::DeviceExt;
 
 use cgmath::*;
 
-pub(crate) static INSTANCE: LazyManual<wgpu::Instance> = LazyManual::new();
-pub(crate) static DEVICE: LazyManual<wgpu::Device> = LazyManual::new();
-pub(crate) static QUEUE: LazyManual<wgpu::Queue> = LazyManual::new();
+pub struct GraphicsCore {
+    instance: wgpu::Instance,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+
+    primary_window_id: WindowId,
+    windows: HashMap<WindowId, Window>,
+    surface_resources: HashMap<WindowId, SurfaceResource>,
+}
+
+impl GraphicsCore {
+    ///title should be integrated to graphics config later.
+    pub(crate) async fn new(
+        title: &'static str,
+        event_loop: &winit::event_loop::EventLoopWindowTarget<()>,
+    ) -> Self {
+        let instance = wgpu::Instance::new(wgpu::Backends::VULKAN);
+
+        let window = WindowBuilder::new()
+            .with_title(title)
+            .build(&event_loop)
+            .unwrap();
+        let window_id = window.id();
+        let window_size = window.inner_size();
+
+        let surface = unsafe { instance.create_surface(&window) };
+
+        let mut windows = HashMap::new();
+        windows.insert(window_id, window);
+
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                force_fallback_adapter: false,
+                compatible_surface: Some(&surface),
+            })
+            .await
+            .unwrap();
+
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Initial Device"),
+                    features: wgpu::Features::empty(),
+                    limits: wgpu::Limits::default(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let surface_config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface
+                .get_preferred_format(&adapter)
+                .expect("Surface is incompatible with the adapter"),
+            width: window_size.width,
+            height: window_size.height,
+            present_mode: wgpu::PresentMode::Fifo,
+        };
+        surface.configure(&device, &surface_config);
+
+        let depth_texture = Texture::create_depth_texture(&surface_config, "Depth Texture");
+
+        let mut surface_resources = HashMap::new();
+        surface_resources.insert(
+            window_id,
+            SurfaceResource {
+                surface,
+                surface_config,
+
+                surface_texture: None,
+                surface_texture_view: None,
+
+                depth_texture,
+            },
+        );
+
+        Self {
+            instance,
+            device,
+            queue,
+
+            primary_window_id: window_id,
+            windows,
+            surface_resources,
+        }
+    }
+}
+
+impl GraphicsCore {
+    pub fn primary_window(&self) -> &Window {
+        self.windows.get(&self.primary_window_id).unwrap();
+    }
+
+    pub fn primary_surface_resource(&self) -> &Window {
+        self.surface_resources.get(&self.primary_window_id).unwrap();
+    }
+}
+
+pub struct SurfaceResource {
+    surface: wgpu::Surface,
+    surface_config: wgpu::SurfaceConfiguration,
+
+    surface_texture: Option<wgpu::SurfaceTexture>,
+    surface_texture_view: Option<wgpu::TextureView>,
+
+    depth_texture: Texture,
+}
 
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::from_cols(
     vec4(1.0, 0.0, 0.0, 0.0),
@@ -21,141 +126,78 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::from_cols(
     vec4(0.0, 0.0, 0.5, 1.0),
 );
 
-pub(crate) fn init(window: Window) -> WindowAndSurface {
-    INSTANCE.init(wgpu::Instance::new(wgpu::Backends::VULKAN));
-    let surface = unsafe { INSTANCE.create_surface(&window) };
-
-    let adapter = pollster::block_on(INSTANCE.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        force_fallback_adapter: false,
-        compatible_surface: Some(&surface),
-    }))
-    .unwrap();
-
-    match pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("Initial Device"),
-            features: wgpu::Features::empty(),
-            limits: wgpu::Limits::default(),
-        },
-        None,
-    )) {
-        Ok((device, queue)) => {
-            DEVICE.init(device);
-            QUEUE.init(queue);
-        }
-        Err(e) => panic!("{:?}", e),
-    };
-
-    let size = window.inner_size();
-    let surface_config = wgpu::SurfaceConfiguration {
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: surface
-            .get_preferred_format(&adapter)
-            .expect("Surface is incompatible with the adapter"),
-        width: size.width,
-        height: size.height,
-        present_mode: wgpu::PresentMode::Fifo,
-    };
-    surface.configure(&DEVICE, &surface_config);
-
-    let depth_texture = Texture::create_depth_texture(&surface_config, "Depth Texture");
-
-    WindowAndSurface {
-        window,
-        surface,
-        surface_config: Mutex::new(surface_config),
-
-        surface_texture: None,
-        surface_texture_view: Mutex::new(None),
-
-        depth_texture: Mutex::new(depth_texture),
-    }
-}
-
-pub struct WindowAndSurface {
-    window: Window,
-    surface: wgpu::Surface,
-    surface_config: Mutex<wgpu::SurfaceConfiguration>,
-
-    surface_texture: Option<wgpu::SurfaceTexture>,
-    surface_texture_view: Mutex<Option<wgpu::TextureView>>,
-
-    depth_texture: Mutex<Texture>,
-}
-
-impl WindowAndSurface {
-    pub fn window(&self) -> &Window {
-        &self.window
-    }
-
-    pub fn aspect(&self) -> f32 {
-        let size = self.window.inner_size().cast::<f32>();
-        size.width / size.height
-    }
-
-    #[must_use]
-    pub(crate) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) -> bool {
-        let window_size = self.window.inner_size();
-
-        if new_size.width > 0 && new_size.height > 0 && window_size == new_size {
-            let mut surface_config = self.surface_config.lock().unwrap();
-            surface_config.width = new_size.width;
-            surface_config.height = new_size.height;
-
-            self.surface_texture = None;
-            *self.surface_texture_view.lock().unwrap() = None;
-
-            self.surface.configure(&DEVICE, &surface_config);
-
-            *self.depth_texture.lock().unwrap() =
-                Texture::create_depth_texture(&surface_config, "depth_texture");
-
-            return true;
-        }
-        false
-    }
-
-    pub fn update(&mut self) {
-        if let Some(_) = self.surface_texture {
-            return;
-        }
-
-        self.surface_texture = match self.surface.get_current_texture() {
-            Ok(surface_texture) => {
-                *self.surface_texture_view.lock().unwrap() = Some(
-                    surface_texture
-                        .texture
-                        .create_view(&wgpu::TextureViewDescriptor::default()),
-                );
-
-                Some(surface_texture)
-            }
-            Err(wgpu::SurfaceError::Outdated) => {
-                self.surface
-                    .configure(&DEVICE, &self.surface_config.lock().unwrap());
-
-                Some(
-                    self.surface
-                        .get_current_texture()
-                        .expect("Error reconfiguring surface"),
-                )
-            }
-            err => Some(err.expect("Failed to acquire next swap chain texture!")),
-        };
-    }
-
-    pub fn present(&mut self) {
-        if let Some(surface_texture) = self.surface_texture.take() {
-            surface_texture.present();
-        }
-        *self.surface_texture_view.lock().unwrap() = None;
-    }
-}
+// impl WindowAndSurface {
+//     pub fn window(&self) -> &Window {
+//         &self.window
+//     }
+//
+//     pub fn aspect(&self) -> f32 {
+//         let size = self.window.inner_size().cast::<f32>();
+//         size.width / size.height
+//     }
+//
+//     #[must_use]
+//     pub(crate) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) -> bool {
+//         let window_size = self.window.inner_size();
+//
+//         if new_size.width > 0 && new_size.height > 0 && window_size == new_size {
+//             let mut surface_config = self.surface_config.lock().unwrap();
+//             surface_config.width = new_size.width;
+//             surface_config.height = new_size.height;
+//
+//             self.surface_texture = None;
+//             *self.surface_texture_view.lock().unwrap() = None;
+//
+//             self.surface.configure(&DEVICE, &surface_config);
+//
+//             *self.depth_texture.lock().unwrap() =
+//                 Texture::create_depth_texture(&surface_config, "depth_texture");
+//
+//             return true;
+//         }
+//         false
+//     }
+//
+//     pub fn update(&mut self) {
+//         if let Some(_) = self.surface_texture {
+//             return;
+//         }
+//
+//         self.surface_texture = match self.surface.get_current_texture() {
+//             Ok(surface_texture) => {
+//                 *self.surface_texture_view.lock().unwrap() = Some(
+//                     surface_texture
+//                         .texture
+//                         .create_view(&wgpu::TextureViewDescriptor::default()),
+//                 );
+//
+//                 Some(surface_texture)
+//             }
+//             Err(wgpu::SurfaceError::Outdated) => {
+//                 self.surface
+//                     .configure(&DEVICE, &self.surface_config.lock().unwrap());
+//
+//                 Some(
+//                     self.surface
+//                         .get_current_texture()
+//                         .expect("Error reconfiguring surface"),
+//                 )
+//             }
+//             err => Some(err.expect("Failed to acquire next swap chain texture!")),
+//         };
+//     }
+//
+//     pub fn present(&mut self) {
+//         if let Some(surface_texture) = self.surface_texture.take() {
+//             surface_texture.present();
+//         }
+//         *self.surface_texture_view.lock().unwrap() = None;
+//     }
+// }
 
 ///Uses Instancing not Dynamic Batching.
 pub struct Batch {
-    window_and_surface: WindowAndSurface,
+    graphics_core: Arc<GraphicsCore>,
 
     render_pipeline: wgpu::RenderPipeline,
 
@@ -174,91 +216,106 @@ pub struct Batch {
 }
 
 impl Batch {
-    pub fn new(window: Window) -> Self {
-        let window_and_surface = init(window);
-
+    pub fn new(graphics_core: Arc<GraphicsCore>) -> Self {
         let view_projection_bind_group_layout =
-            DEVICE.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some(""),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: Some(unsafe { std::num::NonZeroU64::new_unchecked(64) }),
-                    },
-                    count: None,
-                }],
-            });
+            graphics_core
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some(""),
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: Some(unsafe {
+                                std::num::NonZeroU64::new_unchecked(64)
+                            }),
+                        },
+                        count: None,
+                    }],
+                });
 
         let render_pipeline_layout =
-            DEVICE.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&view_projection_bind_group_layout],
-                push_constant_ranges: &[],
-            });
+            graphics_core
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Render Pipeline Layout"),
+                    bind_group_layouts: &[&view_projection_bind_group_layout],
+                    push_constant_ranges: &[],
+                });
 
-        let shader = DEVICE.create_shader_module(&include_wgsl!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            // "/../assets/shaders/shader.wgsl"
-            "/../assets/shaders/view_projection.wgsl"
-        )));
+        let shader = graphics_core
+            .device
+            .create_shader_module(&include_wgsl!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                // "/../assets/shaders/shader.wgsl"
+                "/../assets/shaders/view_projection.wgsl"
+            )));
 
-        let render_pipeline = DEVICE.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: "vs_main",
-                buffers: &[ColorVertex::buffer_layout(), Instance::buffer_layout()],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: "fs_main",
-                targets: &[wgpu::ColorTargetState {
-                    format: window_and_surface.surface_config.lock().unwrap().format,
-                    blend: Some(wgpu::BlendState {
-                        alpha: wgpu::BlendComponent::REPLACE,
-                        color: wgpu::BlendComponent::REPLACE,
+        let render_pipeline =
+            graphics_core
+                .device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("Render Pipeline"),
+                    layout: Some(&render_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: "vs_main",
+                        buffers: &[ColorVertex::buffer_layout(), Instance::buffer_layout()],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: "fs_main",
+                        targets: &[wgpu::ColorTargetState {
+                            format: graphics_core
+                                .primary_surface_resource()
+                                .surface_config
+                                .format,
+                            blend: Some(wgpu::BlendState {
+                                alpha: wgpu::BlendComponent::REPLACE,
+                                color: wgpu::BlendComponent::REPLACE,
+                            }),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        }],
                     }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                }],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-                polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
-                unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: Texture::DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            // If the pipeline will be used with a multiview render pass, this
-            // indicates how many array layers the attachments will have.
-            multiview: None,
-        });
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: Some(wgpu::Face::Back),
+                        // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        // Requires Features::DEPTH_CLIP_CONTROL
+                        unclipped_depth: false,
+                        // Requires Features::CONSERVATIVE_RASTERIZATION
+                        conservative: false,
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: Texture::DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
+                    }),
+                    multisample: wgpu::MultisampleState {
+                        count: 1,
+                        mask: !0,
+                        alpha_to_coverage_enabled: false,
+                    },
+                    // If the pipeline will be used with a multiview render pass, this
+                    // indicates how many array layers the attachments will have.
+                    multiview: None,
+                });
 
-        let instance_buffer = DEVICE.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Instance Buffer"),
-            contents: bytemuck::cast_slice(&[0; 4 * 16 * 1024]),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        });
+        let instance_buffer =
+            graphics_core
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Instance Buffer"),
+                    contents: bytemuck::cast_slice(&[0; 4 * 16 * 1024]),
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                });
 
         let camera = Camera::new(point3(0.0, 0.0, 5.0), vec3(0.0, 0.0, -1.0), 1.0);
 
@@ -269,25 +326,33 @@ impl Batch {
             far: 100.0,
         };
 
-        let view_projection_buffer = DEVICE.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("View Projection Buffer"),
-            contents: bytemuck::cast_slice(AsRef::<[[f32; 4]; 4]>::as_ref(
-                &(OPENGL_TO_WGPU_MATRIX * Matrix4::<f32>::from(projection) * camera.view_matrix()),
-            )),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let view_projection_buffer =
+            graphics_core
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("View Projection Buffer"),
+                    contents: bytemuck::cast_slice(AsRef::<[[f32; 4]; 4]>::as_ref(
+                        &(OPENGL_TO_WGPU_MATRIX
+                            * Matrix4::<f32>::from(projection)
+                            * camera.view_matrix()),
+                    )),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                });
 
-        let view_projection_bind_group = DEVICE.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("View Projection Bind Group"),
-            layout: &view_projection_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: view_projection_buffer.as_entire_binding(),
-            }],
-        });
+        let view_projection_bind_group =
+            graphics_core
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("View Projection Bind Group"),
+                    layout: &view_projection_bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: view_projection_buffer.as_entire_binding(),
+                    }],
+                });
 
         Self {
-            window_and_surface,
+            graphics_core,
 
             render_pipeline,
 
