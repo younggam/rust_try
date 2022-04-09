@@ -36,15 +36,16 @@ pub mod graphics {
     leaf_mod! {pub core}
 }
 
-pub mod input {
-    pub mod keyboard;
+pub mod inputs {
+    leaf_mod! {pub inputs}
+    leaf_mod! {pub keyboard}
 }
 
 pub mod utils {
     leaf_mod! {pub macros}
+    leaf_mod! {pub time}
+    leaf_mod! {pub utils}
     leaf_mod! {pub wrapper}
 }
-
-pub mod time;
 
 pub use cgmath;
