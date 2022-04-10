@@ -257,6 +257,102 @@ impl Graphics {
         }
     }
 
+    pub fn draw(
+        &mut self,
+        window_id: WindowId,
+        render_pass_descriptor: impl Fn(&wgpu::TextureView) -> wgpu::RenderPassDescriptor,
+        render_pipeline: &wgpu::RenderPipeline,
+        to_draw: &[u32],
+        mesh_buffers: &HashMap<u32, MeshBuffer>,
+        instances: &HashMap<u32, Vec<Instance>>,
+        instance_buffer: &wgpu::Buffer,
+    ) {
+        let surface_resource =
+            if let Some(surface_resource) = self.surface_resources.get(&window_id) {
+                surface_resource
+            } else {
+                return;
+            };
+        let surface_texture_view = match surface_resource.surface_texture_view {
+            Some(ref surface_texture_view) => surface_texture_view,
+            _ => unsafe {
+                debug_assert!(false, "Attempted to use None value.");
+                std::hint::unreachable_unchecked()
+            },
+        };
+
+        // self.graphics_core.queue.write_buffer(
+        //     &self.view_projection_buffer,
+        //     0,
+        //     bytemuck::cast_slice(AsRef::<[[f32; 4]; 4]>::as_ref(
+        //         &(OPENGL_TO_WGPU_MATRIX
+        //             * Matrix4::<f32>::from(self.projection)
+        //             * self.camera.view_matrix()),
+        //     )),
+        // );
+        //
+        let mut encoder =
+            self.core
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Draw Stage Encoder"),
+                });
+
+        {
+            let mut render_pass =
+                encoder.begin_render_pass(&render_pass_descriptor(&surface_texture_view));
+
+            render_pass.set_pipeline(render_pipeline);
+            // render_pass.set_bind_group(0, &self.view_projection_bind_group, &[]);
+
+            let mut instance_start = 0u64;
+            for mesh_id in to_draw {
+                let mesh_buffer = match mesh_buffers.get(&mesh_id) {
+                    Some(mesh_buffer) => mesh_buffer,
+                    _ => unsafe {
+                        debug_assert!(false, "Attempted to use empty value.");
+                        std::hint::unreachable_unchecked()
+                    },
+                };
+
+                let instances = match instances.get(&mesh_id) {
+                    Some(instances) => instances,
+                    _ => unsafe {
+                        debug_assert!(false, "Attempted to use empty value.");
+                        std::hint::unreachable_unchecked()
+                    },
+                };
+
+                self.core.queue.write_buffer(
+                    &instance_buffer,
+                    instance_start as wgpu::BufferAddress,
+                    bytemuck::cast_slice(&instances),
+                );
+
+                render_pass.set_index_buffer(
+                    mesh_buffer.index_buffer().slice(..),
+                    wgpu::IndexFormat::Uint32,
+                );
+
+                render_pass.set_vertex_buffer(0, mesh_buffer.vertex_buffer().slice(..));
+
+                let instance_end = instance_start + instances.len() as wgpu::BufferAddress * 4 * 16;
+                render_pass
+                    .set_vertex_buffer(1, instance_buffer.slice(instance_start..instance_end));
+
+                render_pass.draw_indexed(
+                    0..mesh_buffer.indices_count() as u32,
+                    0,
+                    0..instances.len() as u32,
+                );
+
+                instance_start = instance_end;
+            }
+        }
+
+        self.core.queue.submit(std::iter::once(encoder.finish()));
+    }
+
     pub fn present(&mut self) {
         for surface_resource in self.surface_resources.values_mut() {
             if let Some(surface_texture) = surface_resource.surface_texture.take() {
@@ -283,6 +379,26 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::from_cols(
     vec4(0.0, 0.0, 0.5, 0.0),
     vec4(0.0, 0.0, 0.5, 1.0),
 );
+
+/*
+실질적 draw call 실행하는 것
+이쪽은 batch(성능) 의 책임이 없다.
+
+파이프라인,
+텍스쳐,
+버퍼,
+직접 리소스 들고있는
+draw call로 정리된(batch) 리소스를 넘겨야 할 책임이 있다.
+
+외부 데이터와
+그래픽스를 연결해주는
+config 느낌의
+
+pipeline
+renderpass
+texture
+mesh
+*/
 
 ///Uses Instancing not Dynamic Batching.
 pub struct Batch {
