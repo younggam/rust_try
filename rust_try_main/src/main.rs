@@ -4,8 +4,9 @@ use scenes::initial::InitialScene;
 
 fn main() {
     env_logger::init();
-    let app = Application::new("Rust Try", InitialScene::new());
-    app.run();
+    let app = Application::new("Rust Try");
+    let initial_scene = InitialScene::new(&app);
+    app.run(initial_scene);
 }
 
 mod scenes {

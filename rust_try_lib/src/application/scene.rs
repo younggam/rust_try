@@ -1,11 +1,13 @@
-use crate::graphics::Batch;
+use crate::{inputs::Inputs, graphics::Graphics};
 
 pub trait Scene: Send {
     fn enter(&mut self);
 
-    fn update(&mut self);
+    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>);
 
-    fn draw(&self, graphics: &mut Batch);
+    fn update(&mut self, inputs: &Inputs);
+
+    fn render(&mut self, graphics: &Graphics);
 
     fn should_exit(&self);
 

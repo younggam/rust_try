@@ -189,7 +189,6 @@ impl KeyBoard {
     //Updates keyboard states before polling events
     pub(crate) fn pre_update(&mut self) {
         self.previous = self.present;
-        self.present = [KeyState::Released; 163];
     }
 
     pub(crate) fn handle_input(&mut self, keyboard_input: winit::event::KeyboardInput) {

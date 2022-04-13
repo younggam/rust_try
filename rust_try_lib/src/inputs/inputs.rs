@@ -13,6 +13,12 @@ impl Inputs {
         }
     }
 
+    pub fn keyboard(&self) -> &KeyBoard {
+        &self.keyboard
+    }
+}
+
+impl Inputs {
     pub(crate) fn pre_update(&mut self) {
         self.keyboard.pre_update();
     }

@@ -1,15 +1,10 @@
-use crate::{
-    application::Scene,
-    graphics::{Batch, Graphics},
-    inputs::Inputs,
-    utils::Utils,
-};
+use crate::{application::Scene, graphics::Graphics, inputs::Inputs, utils::Utils};
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 //kinda.. side-effect of my modular practice
-use winit::{event::*, event_loop::*};
+use winit::{event::*, event_loop::*, window::WindowId};
 
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 
@@ -19,8 +14,6 @@ pub struct Application {
     event_loop: Cell<Option<EventLoop<()>>>,
 
     graphics: Graphics,
-    batch: Batch,
-
     utils: Utils,
     inputs: Inputs,
 
@@ -29,7 +22,7 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(title: &'static str, initial_scene: impl Scene + 'static) -> Self {
+    pub fn new(title: &'static str) -> Self {
         let event_loop = EventLoop::new();
         let graphics = pollster::block_on(Graphics::new(title, &event_loop));
 
@@ -38,19 +31,30 @@ impl Application {
 
             event_loop: Cell::new(Some(event_loop)),
 
-            batch: Batch::new(&graphics),
             graphics,
-
             utils: Utils::new(),
             inputs: Inputs::new(),
 
-            scene: Some(Box::new(initial_scene)),
+            scene: None,
         }
     }
 
+    pub fn graphics(&self) -> &Graphics {
+        &self.graphics
+    }
+}
+
+impl Application {
     fn init(&mut self) {
         if let Some(ref mut scene) = self.scene {
             scene.enter();
+        }
+    }
+
+    fn resize(&mut self, window_id: WindowId, new_size: winit::dpi::PhysicalSize<u32>) {
+        self.graphics.resize(window_id, new_size);
+        if let Some(ref mut scene) = self.scene {
+            scene.resize(new_size);
         }
     }
 
@@ -64,17 +68,18 @@ impl Application {
         self.graphics.update();
 
         if let Some(ref mut scene) = self.scene {
-            scene.update();
+            scene.update(&self.inputs);
         }
     }
 
     fn draw(&mut self) {
-        if let Some(ref scene) = self.scene {
-            scene.draw(&mut self.batch);
+        if let Some(ref mut scene) = self.scene {
+            scene.render(&self.graphics);
         }
     }
 
-    pub fn run(mut self) {
+    pub fn run(mut self, initial_scene: impl Scene + 'static) {
+        self.scene = Some(Box::new(initial_scene));
         self.event_loop
             .take()
             .unwrap()
@@ -87,12 +92,11 @@ impl Application {
                     Event::WindowEvent { window_id, event } => match event {
                         WindowEvent::CloseRequested => Self::exit(),
                         WindowEvent::Resized(new_inner_size) => {
-                            self.batch
-                                .resize(&mut self.graphics, window_id, new_inner_size)
+                            self.resize(window_id, new_inner_size)
                         }
-                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => self
-                            .batch
-                            .resize(&mut self.graphics, window_id, *new_inner_size),
+                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                            self.resize(window_id, *new_inner_size)
+                        }
                         _ => self.inputs.handle_input(event),
                     },
                     Event::DeviceEvent { .. } => {}
@@ -104,7 +108,6 @@ impl Application {
                         self.draw();
                     }
                     Event::RedrawRequested(_window_id) => {
-                        self.batch.flush(&mut self.graphics);
                         self.graphics.present();
                     }
                     Event::RedrawEventsCleared => {}

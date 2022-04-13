@@ -49,3 +49,4 @@ pub mod utils {
 }
 
 pub use cgmath;
+pub use winit;
