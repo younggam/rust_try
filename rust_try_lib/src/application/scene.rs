@@ -1,11 +1,11 @@
-use crate::{inputs::Inputs, graphics::Graphics};
+use crate::{graphics::Graphics, inputs::Inputs, utils::Utils};
 
 pub trait Scene: Send {
     fn enter(&mut self);
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>);
 
-    fn update(&mut self, inputs: &Inputs);
+    fn update(&mut self, utils: &Utils, inputs: &Inputs);
 
     fn render(&mut self, graphics: &Graphics);
 

@@ -68,7 +68,7 @@ impl Application {
         self.graphics.update();
 
         if let Some(ref mut scene) = self.scene {
-            scene.update(&self.inputs);
+            scene.update(&self.utils, &self.inputs);
         }
     }
 

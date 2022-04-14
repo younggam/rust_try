@@ -15,6 +15,14 @@ impl Time {
             delta: 0.0,
         }
     }
+
+    pub fn time(&self) -> f64 {
+        self.time
+    }
+
+    pub fn delta(&self) -> f64 {
+        self.delta
+    }
 }
 
 impl Time {

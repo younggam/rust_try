@@ -4,6 +4,7 @@ use rust_try_lib::{
     graphics::elements::*,
     graphics::{Graphics, Renderer},
     inputs::{Inputs, KeyCode},
+    utils::Utils,
     winit,
 };
 
@@ -15,7 +16,7 @@ pub struct InitialScene {
 
 impl InitialScene {
     pub fn new(app: &Application) -> Self {
-        let camera = Camera::new(point3(0.0, 0.0, 5.0), vec3(0.0, 0.0, -1.0), 0.1);
+        let camera = Camera::new(point3(0.0, 0.0, 5.0), vec3(0.0, 0.0, -1.0), 1.0);
 
         let projection = PerspectiveFov {
             fovy: Rad(std::f32::consts::FRAC_PI_4),
@@ -41,13 +42,13 @@ impl Scene for InitialScene {
         self.renderer.resize(new_size);
     }
 
-    fn update(&mut self, inputs: &Inputs) {
-        let front = if inputs.keyboard().is_pressed(KeyCode::W) {
+    fn update(&mut self, utils: &Utils, inputs: &Inputs) {
+        let forward = if inputs.keyboard().is_pressed(KeyCode::W) {
             1f32
         } else {
             0f32
         };
-        let back = if inputs.keyboard().is_pressed(KeyCode::S) {
+        let backward = if inputs.keyboard().is_pressed(KeyCode::S) {
             1f32
         } else {
             0f32
@@ -62,7 +63,22 @@ impl Scene for InitialScene {
         } else {
             0f32
         };
-        self.camera.r#move(vec2(right - left, front - back));
+        let up = if inputs.keyboard().is_pressed(KeyCode::Space) {
+            1f32
+        } else {
+            0f32
+        };
+        let down = if inputs.keyboard().is_pressed(KeyCode::LShift) {
+            1f32
+        } else {
+            0f32
+        };
+        self.camera.r#move(
+            utils.delta() as f32,
+            forward - backward,
+            right - left,
+            up - down,
+        );
     }
 
     fn render(&mut self, graphics: &Graphics) {
@@ -218,11 +234,12 @@ impl Camera {
 }
 
 impl Camera {
-    pub fn r#move(&mut self, direction: Vector2<f32>) {
-        let mut direction = direction.extend(0.0);
-        if direction.magnitude2() > 1.0 {
+    pub fn r#move(&mut self, delta: f32, forward: f32, right: f32, up: f32) {
+        let mut direction = self.rotation().rotate_vector(vec3(forward, 0.0, right));
+        direction[2] += up;
+        if direction.magnitude2() > 1f32 {
             direction = direction.normalize();
         }
-        self.transform.r#move(self.speed * direction);
+        self.transform.r#move(self.speed * delta * direction);
     }
 }
