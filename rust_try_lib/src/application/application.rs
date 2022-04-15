@@ -59,12 +59,11 @@ impl Application {
     }
 
     fn pre_update(&mut self) {
+        self.utils.pre_update();
         self.inputs.pre_update();
     }
 
     fn update(&mut self) {
-        self.utils.update();
-        self.inputs.update();
         self.graphics.update();
 
         if let Some(ref mut scene) = self.scene {

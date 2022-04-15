@@ -174,21 +174,24 @@ pub enum KeyState {
 }
 
 pub struct KeyBoard {
-    present: [KeyState; 163],
-    previous: [KeyState; 163],
+    signal: [bool; 163],
+    current: [KeyState; 163],
+    before: [KeyState; 163],
 }
 
 impl KeyBoard {
     pub(crate) fn new() -> Self {
         Self {
-            present: [KeyState::Released; 163],
-            previous: [KeyState::Released; 163],
+            signal: [false; 163],
+            current: [KeyState::Released; 163],
+            before: [KeyState::Released; 163],
         }
     }
 
     //Updates keyboard states before polling events
     pub(crate) fn pre_update(&mut self) {
-        self.previous = self.present;
+        self.signal = [false; 163];
+        self.before = self.current;
     }
 
     pub(crate) fn handle_input(&mut self, keyboard_input: winit::event::KeyboardInput) {
@@ -198,49 +201,58 @@ impl KeyBoard {
                 winit::event::ElementState::Pressed => KeyState::Pressed,
                 winit::event::ElementState::Released => KeyState::Released,
             };
-            self.present[key] = state;
+            self.signal[key] = true;
+            self.current[key] = state;
         }
     }
 
+    pub fn is_signaled(&self, key: KeyCode) -> bool {
+        self.signal[key as usize]
+    }
+
+    pub fn are_signaled(&self, keys: &[KeyCode]) -> bool {
+        keys.iter().all(|key| self.signal[*key as usize])
+    }
+
     pub fn is_pressed(&self, key: KeyCode) -> bool {
-        self.present[key as usize] == KeyState::Pressed
+        self.current[key as usize] == KeyState::Pressed
     }
 
     pub fn are_pressed(&self, keys: &[KeyCode]) -> bool {
         keys.iter()
-            .all(|key| self.present[*key as usize] == KeyState::Pressed)
+            .all(|key| self.current[*key as usize] == KeyState::Pressed)
     }
 
     pub fn is_released(&self, key: KeyCode) -> bool {
-        self.present[key as usize] == KeyState::Released
+        self.current[key as usize] == KeyState::Released
     }
 
     pub fn are_released(&self, keys: &[KeyCode]) -> bool {
         keys.iter()
-            .all(|key| self.present[*key as usize] == KeyState::Released)
+            .all(|key| self.current[*key as usize] == KeyState::Released)
     }
 
     pub fn is_just_pressed(&self, key: KeyCode) -> bool {
         let key = key as usize;
-        self.present[key] == KeyState::Pressed && self.previous[key] == KeyState::Released
+        self.current[key] == KeyState::Pressed && self.before[key] == KeyState::Released
     }
 
     pub fn are_just_pressed(&self, keys: &[KeyCode]) -> bool {
         keys.iter().all(|key| {
             let key = *key as usize;
-            self.present[key] == KeyState::Pressed && self.previous[key] == KeyState::Released
+            self.current[key] == KeyState::Pressed && self.before[key] == KeyState::Released
         })
     }
 
     pub fn is_just_released(&self, key: KeyCode) -> bool {
         let key = key as usize;
-        self.present[key] == KeyState::Released && self.previous[key] == KeyState::Pressed
+        self.current[key] == KeyState::Released && self.before[key] == KeyState::Pressed
     }
 
     pub fn are_just_released(&self, keys: &[KeyCode]) -> bool {
         keys.iter().all(|key| {
             let key = *key as usize;
-            self.present[key] == KeyState::Released && self.previous[key] == KeyState::Pressed
+            self.current[key] == KeyState::Released && self.before[key] == KeyState::Pressed
         })
     }
 }

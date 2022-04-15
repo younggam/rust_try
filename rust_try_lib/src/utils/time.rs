@@ -26,7 +26,7 @@ impl Time {
 }
 
 impl Time {
-    pub(crate) fn update(&mut self) {
+    pub(crate) fn pre_update(&mut self) {
         let this_instant = Instant::now();
         let past_time = self.time;
 

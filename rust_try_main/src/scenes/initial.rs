@@ -43,38 +43,38 @@ impl Scene for InitialScene {
     }
 
     fn update(&mut self, utils: &Utils, inputs: &Inputs) {
-        let forward = if inputs.keyboard().is_pressed(KeyCode::W) {
+        let forward = if inputs.keyboard_is_pressed(KeyCode::W) {
             1f32
         } else {
             0f32
         };
-        let backward = if inputs.keyboard().is_pressed(KeyCode::S) {
+        let backward = if inputs.keyboard_is_pressed(KeyCode::S) {
             1f32
         } else {
             0f32
         };
-        let right = if inputs.keyboard().is_pressed(KeyCode::D) {
+        let right = if inputs.keyboard_is_pressed(KeyCode::D) {
             1f32
         } else {
             0f32
         };
-        let left = if inputs.keyboard().is_pressed(KeyCode::A) {
+        let left = if inputs.keyboard_is_pressed(KeyCode::A) {
             1f32
         } else {
             0f32
         };
-        let up = if inputs.keyboard().is_pressed(KeyCode::Space) {
+        let up = if inputs.keyboard_is_pressed(KeyCode::Space) {
             1f32
         } else {
             0f32
         };
-        let down = if inputs.keyboard().is_pressed(KeyCode::LShift) {
+        let down = if inputs.keyboard_is_pressed(KeyCode::LShift) {
             1f32
         } else {
             0f32
         };
         self.camera.r#move(
-            utils.delta() as f32,
+            utils.time_delta() as f32,
             forward - backward,
             right - left,
             up - down,

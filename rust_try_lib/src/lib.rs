@@ -37,8 +37,10 @@ pub mod graphics {
 }
 
 pub mod inputs {
+    leaf_mod! {pub cursor}
     leaf_mod! {pub inputs}
     leaf_mod! {pub keyboard}
+    leaf_mod! {pub mouse}
 }
 
 pub mod utils {
