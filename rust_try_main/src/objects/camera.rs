@@ -59,7 +59,7 @@ impl Camera {
         self.transform.r#move(self.speed * delta * direction);
     }
 
-    pub fn rotate(&mut self, rad: impl Into<Rad<f32>>, to_right: f32, to_up: f32) {
+    pub fn rotate(&mut self, delta: f32, to_right: f32, to_up: f32) {
         let front = self.rotation().rotate_vector(Self::FRONT);
 
         let mut dest = self.rotation().rotate_vector(vec3(0.0, to_up, to_right));
@@ -68,7 +68,7 @@ impl Camera {
         }
 
         let axis = front.cross(dest);
-        let rotation = Quaternion::from_axis_angle(axis, self.rotate_speed * rad.into().0);
+        let rotation = Quaternion::from_axis_angle(axis, self.rotate_speed * delta);
 
         self.transform.rotate(rotation);
     }

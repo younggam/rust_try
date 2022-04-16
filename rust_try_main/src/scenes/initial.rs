@@ -18,7 +18,7 @@ pub struct InitialScene {
 
 impl InitialScene {
     pub fn new(app: &Application) -> Self {
-        let camera = Camera::new(point3(0.0, 0.0, 5.0), vec3(0.0, 0.0, -1.0), 1.0, Deg(10.0));
+        let camera = Camera::new(point3(0.0, 0.0, 5.0), vec3(0.0, 0.0, -1.0), 1.0, Deg(0.1));
 
         let projection = PerspectiveFov {
             fovy: Rad(std::f32::consts::FRAC_PI_4),
@@ -84,7 +84,7 @@ impl Scene for InitialScene {
 
         let cursor_motion = inputs.cursor_motion();
         self.camera.rotate(
-            Deg(cursor_motion.magnitude()),
+            cursor_motion.magnitude(),
             cursor_motion.x,
             cursor_motion.y,
         );
