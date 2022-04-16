@@ -33,7 +33,7 @@ pub mod graphics {
         leaf_mod! {pub vertex}
     }
 
-    leaf_mod! {pub core}
+    leaf_mod! {pub graphics}
 }
 
 pub mod inputs {

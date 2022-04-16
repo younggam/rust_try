@@ -25,11 +25,7 @@ impl Utils {
         self.time.delta()
     }
 
-    pub fn time_this(&self) -> f64 {
-        self.time.this()
-    }
-
-    pub fn time_this_delta(&self) -> f64 {
-        self.time.this_delta()
+    pub fn time_elapsed(&self) -> f64 {
+        self.time.elapsed()
     }
 }

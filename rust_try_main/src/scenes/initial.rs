@@ -1,3 +1,5 @@
+use crate::objects::camera::*;
+
 use rust_try_lib::{
     application::{Application, Scene},
     cgmath::*,
@@ -43,32 +45,32 @@ impl Scene for InitialScene {
     }
 
     fn update(&mut self, utils: &Utils, inputs: &Inputs) {
-        let forward = if inputs.keyboard_is_pressed(KeyCode::W) {
+        let forward = if inputs.is_key_pressed(KeyCode::W) {
             1f32
         } else {
             0f32
         };
-        let backward = if inputs.keyboard_is_pressed(KeyCode::S) {
+        let backward = if inputs.is_key_pressed(KeyCode::S) {
             1f32
         } else {
             0f32
         };
-        let right = if inputs.keyboard_is_pressed(KeyCode::D) {
+        let right = if inputs.is_key_pressed(KeyCode::D) {
             1f32
         } else {
             0f32
         };
-        let left = if inputs.keyboard_is_pressed(KeyCode::A) {
+        let left = if inputs.is_key_pressed(KeyCode::A) {
             1f32
         } else {
             0f32
         };
-        let up = if inputs.keyboard_is_pressed(KeyCode::Space) {
+        let up = if inputs.is_key_pressed(KeyCode::Space) {
             1f32
         } else {
             0f32
         };
-        let down = if inputs.keyboard_is_pressed(KeyCode::LShift) {
+        let down = if inputs.is_key_pressed(KeyCode::LShift) {
             1f32
         } else {
             0f32
@@ -82,10 +84,9 @@ impl Scene for InitialScene {
 
         let cursor_motion = inputs.cursor_motion();
         self.camera.rotate(
-            utils.time_delta() as f32,
             Deg(cursor_motion.magnitude()),
             cursor_motion.x,
-            -cursor_motion.y,
+            cursor_motion.y,
         );
     }
 
@@ -135,135 +136,4 @@ impl Scene for InitialScene {
     }
 
     fn force_exit(&mut self) {}
-}
-
-//
-
-pub struct Transform {
-    position: Point3<f32>,
-    rotation: Quaternion<f32>,
-    scale: Vector3<f32>,
-}
-
-impl Transform {
-    pub fn new(position: Point3<f32>, rotation: Quaternion<f32>, scale: Vector3<f32>) -> Self {
-        Self {
-            position,
-            rotation,
-            scale,
-        }
-    }
-}
-
-impl Transform {
-    pub fn r#move(&mut self, velocity: Vector3<f32>) {
-        self.position += velocity;
-    }
-
-    pub fn rotate(&mut self, rotation: Quaternion<f32>) {
-        self.rotation = rotation * self.rotation;
-    }
-
-    pub fn scale_adjust(&mut self, scale: Vector3<f32>) {
-        self.scale += scale;
-    }
-}
-
-impl From<Point3<f32>> for Transform {
-    fn from(position: Point3<f32>) -> Self {
-        Self {
-            position,
-            rotation: Quaternion::one(),
-            scale: vec3(1.0, 1.0, 1.0),
-        }
-    }
-}
-
-impl From<Quaternion<f32>> for Transform {
-    fn from(rotation: Quaternion<f32>) -> Self {
-        Self {
-            position: point3(0.0, 0.0, 0.0),
-            rotation: rotation,
-            scale: vec3(1.0, 1.0, 1.0),
-        }
-    }
-}
-
-impl From<Vector3<f32>> for Transform {
-    fn from(scale: Vector3<f32>) -> Self {
-        Self {
-            position: point3(0.0, 0.0, 0.0),
-            rotation: Quaternion::one(),
-            scale,
-        }
-    }
-}
-
-//
-
-pub struct Camera {
-    transform: Transform,
-    speed: f32,
-    rotate_speed: Rad<f32>,
-}
-
-impl Camera {
-    const FRONT: Vector3<f32> = vec3(1.0, 0.0, 0.0);
-
-    pub fn new(
-        position: Point3<f32>,
-        front: Vector3<f32>,
-        speed: f32,
-        rotate_speed: impl Into<Rad<f32>>,
-    ) -> Self {
-        Self {
-            transform: Transform::new(
-                position,
-                Quaternion::from_arc(Self::FRONT, front, None),
-                vec3(1.0, 1.0, 1.0),
-            ),
-            speed,
-            rotate_speed: rotate_speed.into(),
-        }
-    }
-
-    pub fn position(&self) -> Point3<f32> {
-        self.transform.position
-    }
-
-    pub fn rotation(&self) -> Quaternion<f32> {
-        self.transform.rotation
-    }
-
-    pub fn scale(&self) -> Vector3<f32> {
-        self.transform.scale
-    }
-
-    pub fn view_matrix(&self) -> Matrix4<f32> {
-        Matrix4::look_to_rh(
-            self.position(),
-            self.rotation().rotate_vector(Self::FRONT),
-            vec3(0.0, 1.0, 0.0),
-        )
-    }
-}
-
-impl Camera {
-    pub fn r#move(&mut self, delta: f32, forward: f32, right: f32, up: f32) {
-        let mut direction = self.rotation().rotate_vector(vec3(forward, 0.0, right));
-        direction[2] += up;
-        if direction.magnitude2() > 1.0 {
-            direction = direction.normalize();
-        }
-        self.transform.r#move(self.speed * delta * direction);
-    }
-
-    pub fn rotate(&mut self, delta: f32, rad: impl Into<Rad<f32>>, to_right: f32, to_up: f32) {
-        let front = self.rotation().rotate_vector(Self::FRONT);
-        let dest = self.rotation().rotate_vector(vec3(0.0, to_up, to_right));
-        let axis = front.cross(dest);
-        let rotation = Quaternion::from_axis_angle(axis, self.rotate_speed * delta * rad.into().0);
-
-        self.transform.rotate(rotation);
-    }
 }

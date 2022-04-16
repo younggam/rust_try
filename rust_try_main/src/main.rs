@@ -9,8 +9,13 @@ fn main() {
     app.run(initial_scene);
 }
 
-mod scenes {
+pub mod scenes {
     pub mod initial;
+}
+
+pub mod objects {
+    pub mod camera;
+    pub mod transform;
 }
 
 #[cfg(test)]

@@ -37,7 +37,7 @@ impl Cursor {
     pub fn handle_input(&mut self, input: WindowEvent) {
         match input {
             WindowEvent::CursorMoved { position, .. } => {
-                self.position = point2(position.x as f32, position.y as f32);
+                self.position = point2(position.x as f32, -position.y as f32);
                 if self.is_just_entered() {
                     self.prev_position = self.position;
                 }

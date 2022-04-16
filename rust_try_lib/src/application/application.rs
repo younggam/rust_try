@@ -3,7 +3,6 @@ use crate::{application::Scene, graphics::Graphics, inputs::Inputs, utils::Utils
 use std::{
     cell::Cell,
     sync::atomic::{AtomicBool, Ordering},
-    time::*,
 };
 
 //kinda.. side-effect of my modular practice
@@ -94,7 +93,9 @@ impl Application {
                     Event::NewEvents(start_cause) => match start_cause {
                         StartCause::Init => self.init(),
                         _ => {
-                            while 1.0 / self.frame_per_sec > self.utils.time_this_delta() {
+                            while 1.0 / self.frame_per_sec
+                                > self.utils.time_elapsed() - self.utils.time()
+                            {
                                 std::hint::spin_loop();
                             }
                             self.pre_update();

@@ -24,12 +24,8 @@ impl Time {
         self.delta
     }
 
-    pub fn this(&self) -> f64 {
+    pub fn elapsed(&self) -> f64 {
         self.base_instant.elapsed().as_secs_f64()
-    }
-
-    pub fn this_delta(&self) -> f64 {
-        self.this() - self.time
     }
 }
 
