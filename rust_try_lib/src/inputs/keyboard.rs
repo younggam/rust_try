@@ -188,24 +188,6 @@ impl KeyBoard {
         }
     }
 
-    //Updates keyboard states before polling events
-    pub(crate) fn pre_update(&mut self) {
-        self.signal = [false; 163];
-        self.before = self.current;
-    }
-
-    pub(crate) fn handle_input(&mut self, keyboard_input: winit::event::KeyboardInput) {
-        if let Some(key) = keyboard_input.virtual_keycode {
-            let key = key as usize;
-            let state = match keyboard_input.state {
-                winit::event::ElementState::Pressed => KeyState::Pressed,
-                winit::event::ElementState::Released => KeyState::Released,
-            };
-            self.signal[key] = true;
-            self.current[key] = state;
-        }
-    }
-
     pub fn is_signaled(&self, key: KeyCode) -> bool {
         self.signal[key as usize]
     }
@@ -254,5 +236,25 @@ impl KeyBoard {
             let key = *key as usize;
             self.current[key] == KeyState::Released && self.before[key] == KeyState::Pressed
         })
+    }
+}
+
+impl KeyBoard {
+    //Updates keyboard states before polling events
+    pub(crate) fn pre_update(&mut self) {
+        self.signal = [false; 163];
+        self.before = self.current;
+    }
+
+    pub(crate) fn handle_input(&mut self, keyboard_input: winit::event::KeyboardInput) {
+        if let Some(key) = keyboard_input.virtual_keycode {
+            let key = key as usize;
+            let state = match keyboard_input.state {
+                winit::event::ElementState::Pressed => KeyState::Pressed,
+                winit::event::ElementState::Released => KeyState::Released,
+            };
+            self.signal[key] = true;
+            self.current[key] = state;
+        }
     }
 }

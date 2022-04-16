@@ -1,15 +1,19 @@
 use super::*;
 
+use cgmath::*;
+
 use winit::event::*;
 
 pub struct Inputs {
     keyboard: KeyBoard,
+    cursor: Cursor,
 }
 
 impl Inputs {
     pub(crate) fn new() -> Self {
         Self {
             keyboard: KeyBoard::new(),
+            cursor: Cursor::new(),
         }
     }
 }
@@ -17,20 +21,15 @@ impl Inputs {
 impl Inputs {
     pub(crate) fn pre_update(&mut self) {
         self.keyboard.pre_update();
+        self.cursor.pre_update();
     }
 
     pub(crate) fn handle_input(&mut self, input: WindowEvent) {
         match input {
             WindowEvent::KeyboardInput { input, .. } => self.keyboard.handle_input(input),
-            WindowEvent::CursorMoved { position, .. } => {
-                println!("{:?}", position)
-            }
-            WindowEvent::CursorEntered { .. } => {
-                println!("Entered")
-            }
-            WindowEvent::CursorLeft { .. } => {
-                println!("Left")
-            }
+            WindowEvent::CursorMoved { .. }
+            | WindowEvent::CursorEntered { .. }
+            | WindowEvent::CursorLeft { .. } => self.cursor.handle_input(input),
             WindowEvent::MouseWheel { delta, phase, .. } => {
                 println!("{:?} {:?}", delta, phase)
             }
@@ -81,5 +80,11 @@ impl Inputs {
 
     pub fn keyboard_are_just_released(&self, keys: &[KeyCode]) -> bool {
         self.keyboard.are_just_released(keys)
+    }
+}
+
+impl Inputs {
+    pub fn cursor_motion(&self) -> Vector2<f32> {
+        self.cursor.motion()
     }
 }

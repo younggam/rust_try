@@ -16,7 +16,7 @@ pub struct InitialScene {
 
 impl InitialScene {
     pub fn new(app: &Application) -> Self {
-        let camera = Camera::new(point3(0.0, 0.0, 5.0), vec3(0.0, 0.0, -1.0), 1.0);
+        let camera = Camera::new(point3(0.0, 0.0, 5.0), vec3(0.0, 0.0, -1.0), 1.0, Deg(10.0));
 
         let projection = PerspectiveFov {
             fovy: Rad(std::f32::consts::FRAC_PI_4),
@@ -78,6 +78,14 @@ impl Scene for InitialScene {
             forward - backward,
             right - left,
             up - down,
+        );
+
+        let cursor_motion = inputs.cursor_motion();
+        self.camera.rotate(
+            utils.time_delta() as f32,
+            Deg(cursor_motion.magnitude()),
+            cursor_motion.x,
+            -cursor_motion.y,
         );
     }
 
@@ -196,12 +204,18 @@ impl From<Vector3<f32>> for Transform {
 pub struct Camera {
     transform: Transform,
     speed: f32,
+    rotate_speed: Rad<f32>,
 }
 
 impl Camera {
     const FRONT: Vector3<f32> = vec3(1.0, 0.0, 0.0);
 
-    pub fn new(position: Point3<f32>, front: Vector3<f32>, speed: f32) -> Self {
+    pub fn new(
+        position: Point3<f32>,
+        front: Vector3<f32>,
+        speed: f32,
+        rotate_speed: impl Into<Rad<f32>>,
+    ) -> Self {
         Self {
             transform: Transform::new(
                 position,
@@ -209,6 +223,7 @@ impl Camera {
                 vec3(1.0, 1.0, 1.0),
             ),
             speed,
+            rotate_speed: rotate_speed.into(),
         }
     }
 
@@ -237,9 +252,18 @@ impl Camera {
     pub fn r#move(&mut self, delta: f32, forward: f32, right: f32, up: f32) {
         let mut direction = self.rotation().rotate_vector(vec3(forward, 0.0, right));
         direction[2] += up;
-        if direction.magnitude2() > 1f32 {
+        if direction.magnitude2() > 1.0 {
             direction = direction.normalize();
         }
         self.transform.r#move(self.speed * delta * direction);
+    }
+
+    pub fn rotate(&mut self, delta: f32, rad: impl Into<Rad<f32>>, to_right: f32, to_up: f32) {
+        let front = self.rotation().rotate_vector(Self::FRONT);
+        let dest = self.rotation().rotate_vector(vec3(0.0, to_up, to_right));
+        let axis = front.cross(dest);
+        let rotation = Quaternion::from_axis_angle(axis, self.rotate_speed * delta * rad.into().0);
+
+        self.transform.rotate(rotation);
     }
 }

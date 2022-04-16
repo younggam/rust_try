@@ -2,7 +2,7 @@
 use std::time::*;
 
 pub struct Time {
-    initial_instant: Instant,
+    base_instant: Instant,
     time: f64,
     delta: f64,
 }
@@ -10,7 +10,7 @@ pub struct Time {
 impl Time {
     pub(crate) fn new() -> Self {
         Self {
-            initial_instant: Instant::now(),
+            base_instant: Instant::now(),
             time: 0.0,
             delta: 0.0,
         }
@@ -23,6 +23,14 @@ impl Time {
     pub fn delta(&self) -> f64 {
         self.delta
     }
+
+    pub fn this(&self) -> f64 {
+        self.base_instant.elapsed().as_secs_f64()
+    }
+
+    pub fn this_delta(&self) -> f64 {
+        self.this() - self.time
+    }
 }
 
 impl Time {
@@ -30,15 +38,15 @@ impl Time {
         let this_instant = Instant::now();
         let past_time = self.time;
 
-        match this_instant.checked_duration_since(self.initial_instant) {
+        match this_instant.checked_duration_since(self.base_instant) {
             Some(duration) => {
                 self.time = duration.as_secs_f64();
                 self.delta = self.time - past_time;
             }
             None => {
-                self.initial_instant = this_instant;
+                self.base_instant = this_instant;
                 self.time = 0.0;
-                self.delta = f64::MAX - past_time;
+                self.delta = 0.0;
             }
         }
     }

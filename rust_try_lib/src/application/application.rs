@@ -1,7 +1,10 @@
 use crate::{application::Scene, graphics::Graphics, inputs::Inputs, utils::Utils};
 
-use std::cell::Cell;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    cell::Cell,
+    sync::atomic::{AtomicBool, Ordering},
+    time::*,
+};
 
 //kinda.. side-effect of my modular practice
 use winit::{event::*, event_loop::*, window::WindowId};
@@ -12,6 +15,8 @@ pub struct Application {
     _title: &'static str,
 
     event_loop: Cell<Option<EventLoop<()>>>,
+
+    frame_per_sec: f64,
 
     graphics: Graphics,
     utils: Utils,
@@ -30,6 +35,8 @@ impl Application {
             _title: title,
 
             event_loop: Cell::new(Some(event_loop)),
+
+            frame_per_sec: 60.0,
 
             graphics,
             utils: Utils::new(),
@@ -86,7 +93,12 @@ impl Application {
                 match event {
                     Event::NewEvents(start_cause) => match start_cause {
                         StartCause::Init => self.init(),
-                        _ => self.pre_update(),
+                        _ => {
+                            while 1.0 / self.frame_per_sec > self.utils.time_this_delta() {
+                                std::hint::spin_loop();
+                            }
+                            self.pre_update();
+                        }
                     },
                     Event::WindowEvent { window_id, event } => match event {
                         WindowEvent::CloseRequested => Self::exit(),

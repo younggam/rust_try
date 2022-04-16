@@ -16,12 +16,20 @@ impl Utils {
     }
 }
 
-impl Utils{
+impl Utils {
     pub fn time(&self) -> f64 {
         self.time.time()
     }
 
     pub fn time_delta(&self) -> f64 {
         self.time.delta()
+    }
+
+    pub fn time_this(&self) -> f64 {
+        self.time.this()
+    }
+
+    pub fn time_this_delta(&self) -> f64 {
+        self.time.this_delta()
     }
 }
