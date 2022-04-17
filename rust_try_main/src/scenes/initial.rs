@@ -8,29 +8,34 @@ use rust_try_lib::{
     inputs::{Inputs, KeyCode},
     utils::Utils,
     winit,
+    winit::window::WindowId,
 };
 
 pub struct InitialScene {
     renderer: Renderer,
     camera: Camera,
     projection: PerspectiveFov<f32>,
+    target_window_id: WindowId,
 }
 
 impl InitialScene {
     pub fn new(app: &Application) -> Self {
         let camera = Camera::new(point3(0.0, 0.0, 5.0), vec3(0.0, 0.0, -1.0), 1.0, Deg(0.1));
 
+        let target_window_id = app.graphics().primary_window_id().unwrap();
+
         let projection = PerspectiveFov {
             fovy: Rad(std::f32::consts::FRAC_PI_4),
-            aspect: app.graphics().aspect(app.graphics().primary_window_id()),
+            aspect: app.graphics().aspect(target_window_id),
             near: 0.1,
             far: 100.0,
         };
 
         Self {
-            renderer: Renderer::new(&app.graphics()),
+            renderer: Renderer::new(&app.graphics(), target_window_id),
             camera,
             projection,
+            target_window_id,
         }
     }
 }
@@ -38,10 +43,11 @@ impl InitialScene {
 impl Scene for InitialScene {
     fn enter(&mut self) {}
 
-    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        let float_new_size = new_size.cast::<f32>();
-        self.projection.aspect = float_new_size.width / float_new_size.height;
-        self.renderer.resize(new_size);
+    fn resize(&mut self, window_id: WindowId, new_size: winit::dpi::PhysicalSize<u32>) {
+        if window_id == self.target_window_id {
+            let float_new_size = new_size.cast::<f32>();
+            self.projection.aspect = float_new_size.width / float_new_size.height;
+        }
     }
 
     fn update(&mut self, utils: &Utils, inputs: &Inputs) {
@@ -83,11 +89,8 @@ impl Scene for InitialScene {
         );
 
         let cursor_motion = inputs.cursor_motion();
-        self.camera.rotate(
-            cursor_motion.magnitude(),
-            cursor_motion.x,
-            cursor_motion.y,
-        );
+        self.camera
+            .rotate(cursor_motion.magnitude(), cursor_motion.x, cursor_motion.y);
     }
 
     fn render(&mut self, graphics: &Graphics) {
@@ -125,6 +128,7 @@ impl Scene for InitialScene {
         }
         self.renderer.render(
             &graphics,
+            self.target_window_id,
             Matrix4::<f32>::from(self.projection) * self.camera.view_matrix(),
         );
     }

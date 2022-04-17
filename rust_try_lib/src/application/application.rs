@@ -1,4 +1,9 @@
-use crate::{application::Scene, graphics::Graphics, inputs::Inputs, utils::Utils};
+use crate::{
+    application::Scene,
+    graphics::{Graphics, GraphicsConfig},
+    inputs::Inputs,
+    utils::Utils,
+};
 
 use std::{
     cell::Cell,
@@ -28,7 +33,7 @@ pub struct Application {
 impl Application {
     pub fn new(title: &'static str) -> Self {
         let event_loop = EventLoop::new();
-        let graphics = pollster::block_on(Graphics::new(title, &event_loop));
+        let graphics = pollster::block_on(Graphics::new(GraphicsConfig { title }, &event_loop));
 
         Self {
             _title: title,
@@ -60,7 +65,7 @@ impl Application {
     fn resize(&mut self, window_id: WindowId, new_size: winit::dpi::PhysicalSize<u32>) {
         self.graphics.resize(window_id, new_size);
         if let Some(ref mut scene) = self.scene {
-            scene.resize(new_size);
+            scene.resize(window_id, new_size);
         }
     }
 
@@ -88,7 +93,7 @@ impl Application {
         self.event_loop
             .take()
             .unwrap()
-            .run(move |event, _, control_flow| {
+            .run(move |event, _event_loop, control_flow| {
                 match event {
                     Event::NewEvents(start_cause) => match start_cause {
                         StartCause::Init => self.init(),
@@ -102,7 +107,12 @@ impl Application {
                         }
                     },
                     Event::WindowEvent { window_id, event } => match event {
-                        WindowEvent::CloseRequested => Self::exit(),
+                        WindowEvent::CloseRequested => {
+                            self.graphics.remove_window(window_id);
+                            if self.graphics.window_ids().count() == 0 {
+                                Self::exit();
+                            }
+                        }
                         WindowEvent::Resized(new_inner_size) => {
                             self.resize(window_id, new_inner_size)
                         }

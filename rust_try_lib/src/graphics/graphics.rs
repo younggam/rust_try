@@ -1,7 +1,6 @@
 use super::elements::*;
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::hash_map::*, ops::Deref, sync::Arc};
 
 use winit::{
     event_loop::EventLoopWindowTarget,
@@ -13,7 +12,7 @@ use wgpu::util::DeviceExt;
 use cgmath::*;
 
 pub struct GraphicsConfig {
-    title: &'static str,
+    pub title: &'static str,
 }
 
 ///title should be integrated to graphics config later.
@@ -22,9 +21,8 @@ pub struct Graphics {
 
     core: Arc<GraphicsCore>,
 
-    primary_window_id: WindowId,
-    windows: HashMap<WindowId, Window>,
-    surface_resources: HashMap<WindowId, SurfaceResource>,
+    primary_window_id: Option<WindowId>,
+    window_surfaces: HashMap<WindowId, WindowSurface>,
 }
 
 pub struct GraphicsCore {
@@ -35,20 +33,19 @@ pub struct GraphicsCore {
 }
 
 impl Graphics {
-    pub(crate) async fn new(title: &'static str, event_loop: &EventLoopWindowTarget<()>) -> Self {
+    pub(crate) async fn new(
+        config: GraphicsConfig,
+        event_loop: &EventLoopWindowTarget<()>,
+    ) -> Self {
         let instance = wgpu::Instance::new(wgpu::Backends::VULKAN);
 
         let window = WindowBuilder::new()
-            .with_title(title)
+            .with_title(config.title)
             .build(event_loop)
             .unwrap();
         let window_id = window.id();
-        let window_size = window.inner_size();
 
         let surface = unsafe { instance.create_surface(&window) };
-
-        let mut windows = HashMap::new();
-        windows.insert(window_id, window);
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -71,6 +68,7 @@ impl Graphics {
             .await
             .unwrap();
 
+        let window_size = window.inner_size();
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface
@@ -85,10 +83,12 @@ impl Graphics {
         let depth_texture =
             Texture::create_depth_texture(&device, &surface_config, "Depth Texture");
 
-        let mut surface_resources = HashMap::new();
-        surface_resources.insert(
-            window_id,
-            SurfaceResource {
+        let mut window_surfaces = HashMap::new();
+        window_surfaces.insert(
+            window.id(),
+            WindowSurface {
+                window,
+
                 surface,
                 surface_config,
 
@@ -100,7 +100,7 @@ impl Graphics {
         );
 
         Self {
-            config: GraphicsConfig { title },
+            config,
 
             core: Arc::new(GraphicsCore {
                 instance,
@@ -109,9 +109,8 @@ impl Graphics {
                 queue,
             }),
 
-            primary_window_id: window_id,
-            windows,
-            surface_resources,
+            primary_window_id: Some(window_id),
+            window_surfaces,
         }
     }
 
@@ -119,21 +118,34 @@ impl Graphics {
         &self.core
     }
 
-    pub fn primary_window_id(&self) -> WindowId {
+    pub fn primary_window_id(&self) -> Option<WindowId> {
         self.primary_window_id
     }
 
-    pub fn primary_window(&self) -> &Window {
-        self.windows.get(&self.primary_window_id).unwrap()
+    pub fn set_primary_window_id(&mut self, window_id: WindowId) {
+        if self.window_surfaces.contains_key(&window_id) {
+            self.primary_window_id = Some(window_id);
+        }
     }
 
-    pub fn primary_surface_resource(&self) -> &SurfaceResource {
-        self.surface_resources.get(&self.primary_window_id).unwrap()
+    pub fn primary_window_surface(&self) -> Option<&WindowSurface> {
+        match self.primary_window_id {
+            Some(primary_window_id) => self.window_surfaces.get(&primary_window_id),
+            _ => None,
+        }
+    }
+
+    pub fn window_ids(&self) -> Keys<'_, WindowId, WindowSurface> {
+        self.window_surfaces.keys()
+    }
+
+    pub fn window_surface(&self, window_id: WindowId) -> Option<&WindowSurface> {
+        self.window_surfaces.get(&window_id)
     }
 
     pub fn aspect(&self, window_id: WindowId) -> f32 {
         let size = self
-            .windows
+            .window_surfaces
             .get(&window_id)
             .unwrap()
             .inner_size()
@@ -144,84 +156,95 @@ impl Graphics {
 }
 
 impl Graphics {
-    pub fn add_window(&mut self, event_loop: &EventLoopWindowTarget<()>) -> bool {
+    pub fn add_window(&mut self, event_loop: &EventLoopWindowTarget<()>) -> Result<WindowId, ()> {
         let window = WindowBuilder::new()
             .with_title(self.config.title)
             .build(event_loop)
             .unwrap();
-        let window_id = window.id();
-        let window_size = window.inner_size();
 
         let surface = unsafe { self.core.instance.create_surface(&window) };
         let is_surface_supported = self.core.adapter.is_surface_supported(&surface);
-        if is_surface_supported {
-            self.windows.insert(window_id, window);
-
-            let surface_config = wgpu::SurfaceConfiguration {
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                format: surface
-                    .get_preferred_format(&self.core.adapter)
-                    .expect("Surface is incompatible with the adapter"),
-                width: window_size.width,
-                height: window_size.height,
-                present_mode: wgpu::PresentMode::Fifo,
-            };
-            surface.configure(&self.core.device, &surface_config);
-
-            let depth_texture =
-                Texture::create_depth_texture(&self.core.device, &surface_config, "Depth Texture");
-
-            self.surface_resources.insert(
-                window_id,
-                SurfaceResource {
-                    surface,
-                    surface_config,
-
-                    surface_texture: None,
-                    surface_texture_view: None,
-
-                    depth_texture,
-                },
-            );
+        if !is_surface_supported {
+            return Err(());
         }
-        is_surface_supported
+        let window_size = window.inner_size();
+        let surface_config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface
+                .get_preferred_format(&self.core.adapter)
+                .expect("Surface is incompatible with the adapter"),
+            width: window_size.width,
+            height: window_size.height,
+            present_mode: wgpu::PresentMode::Fifo,
+        };
+        surface.configure(&self.core.device, &surface_config);
+
+        let depth_texture =
+            Texture::create_depth_texture(&self.core.device, &surface_config, "Depth Texture");
+
+        let window_id = window.id();
+        self.window_surfaces.insert(
+            window_id,
+            WindowSurface {
+                window,
+
+                surface,
+                surface_config,
+
+                surface_texture: None,
+                surface_texture_view: None,
+
+                depth_texture,
+            },
+        );
+        Ok(window_id)
+    }
+
+    pub fn remove_window(&mut self, window_id: WindowId) {
+        if Some(window_id) == self.primary_window_id {
+            self.primary_window_id = None;
+        }
+        self.window_surfaces.remove(&window_id);
     }
 
     ///윈도우에 맞는 resize
     pub(crate) fn resize(&mut self, window_id: WindowId, new_size: winit::dpi::PhysicalSize<u32>) {
-        let window = self.windows.get(&window_id).unwrap();
-        let surface_resource = self.surface_resources.get_mut(&window_id).unwrap();
-        let window_size = window.inner_size();
+        let window_surface = match self.window_surfaces.get_mut(&window_id) {
+            Some(window_surface) => window_surface,
+            None => return,
+        };
+        let window_size = window_surface.inner_size();
 
         if new_size.width > 0 && new_size.height > 0 && window_size == new_size {
-            surface_resource.surface_config.width = new_size.width;
-            surface_resource.surface_config.height = new_size.height;
+            window_surface.surface_config.width = new_size.width;
+            window_surface.surface_config.height = new_size.height;
 
-            surface_resource.surface_texture = None;
-            surface_resource.surface_texture_view = None;
+            window_surface.surface_texture = None;
+            window_surface.surface_texture_view = None;
 
-            surface_resource
+            window_surface
                 .surface
-                .configure(&self.core.device, &surface_resource.surface_config);
+                .configure(&self.core.device, &window_surface.surface_config);
 
-            surface_resource.depth_texture = Texture::create_depth_texture(
+            window_surface.depth_texture = Texture::create_depth_texture(
                 &self.core.device,
-                &surface_resource.surface_config,
+                &window_surface.surface_config,
                 "depth_texture",
             );
         }
     }
 
     pub fn update(&mut self) {
-        for surface_resource in self.surface_resources.values_mut() {
-            if let Some(_) = surface_resource.surface_texture {
+        for window_surface in self.window_surfaces.values_mut() {
+            window_surface.request_redraw();
+
+            if let Some(_) = window_surface.surface_texture {
                 continue;
             }
 
-            surface_resource.surface_texture = match surface_resource.surface.get_current_texture()
-            {
+            window_surface.surface_texture = match window_surface.surface.get_current_texture() {
                 Ok(surface_texture) => {
-                    surface_resource.surface_texture_view = Some(
+                    window_surface.surface_texture_view = Some(
                         surface_texture
                             .texture
                             .create_view(&wgpu::TextureViewDescriptor::default()),
@@ -230,12 +253,12 @@ impl Graphics {
                     Some(surface_texture)
                 }
                 Err(wgpu::SurfaceError::Outdated) => {
-                    surface_resource
+                    window_surface
                         .surface
-                        .configure(&self.core.device, &surface_resource.surface_config);
+                        .configure(&self.core.device, &window_surface.surface_config);
 
                     Some(
-                        surface_resource
+                        window_surface
                             .surface
                             .get_current_texture()
                             .expect("Error reconfiguring surface"),
@@ -244,23 +267,21 @@ impl Graphics {
                 e => panic!("Failed to acquire next swap chain texture!\n{:?}", e),
             };
         }
-
-        for window in self.windows.values() {
-            window.request_redraw();
-        }
     }
 
     pub fn present(&mut self) {
-        for surface_resource in self.surface_resources.values_mut() {
-            if let Some(surface_texture) = surface_resource.surface_texture.take() {
+        for window_surface in self.window_surfaces.values_mut() {
+            if let Some(surface_texture) = window_surface.surface_texture.take() {
                 surface_texture.present();
             }
-            surface_resource.surface_texture_view = None;
+            window_surface.surface_texture_view = None;
         }
     }
 }
 
-pub struct SurfaceResource {
+pub struct WindowSurface {
+    window: Window,
+
     surface: wgpu::Surface,
     surface_config: wgpu::SurfaceConfiguration,
 
@@ -268,6 +289,14 @@ pub struct SurfaceResource {
     surface_texture_view: Option<wgpu::TextureView>,
 
     depth_texture: Texture,
+}
+
+impl Deref for WindowSurface {
+    type Target = Window;
+
+    fn deref(&self) -> &Self::Target {
+        &self.window
+    }
 }
 
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::from_cols(
@@ -311,7 +340,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(graphics: &Graphics) -> Self {
+    pub fn new(graphics: &Graphics, target_window_id: WindowId) -> Self {
         let view_projection_bind_group_layout =
             graphics
                 .core
@@ -367,7 +396,11 @@ impl Renderer {
                         module: &shader,
                         entry_point: "fs_main",
                         targets: &[wgpu::ColorTargetState {
-                            format: graphics.primary_surface_resource().surface_config.format,
+                            format: graphics
+                                .window_surface(target_window_id)
+                                .expect("Target window doesn't exist")
+                                .surface_config
+                                .format,
                             blend: Some(wgpu::BlendState {
                                 alpha: wgpu::BlendComponent::REPLACE,
                                 color: wgpu::BlendComponent::REPLACE,
@@ -441,12 +474,18 @@ impl Renderer {
 }
 
 impl Renderer {
-    ///window 에 맞는 resize필요
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {}
+    pub fn render(
+        &mut self,
+        graphics: &Graphics,
+        target_window_id: WindowId,
+        view_proj_matrix: Matrix4<f32>,
+    ) {
+        let window_surface = match graphics.window_surface(target_window_id) {
+            Some(window_surface) => window_surface,
+            _ => return,
+        };
 
-    pub fn render(&mut self, graphics: &Graphics, view_proj_matrix: Matrix4<f32>) {
-        let surface_resource = graphics.primary_surface_resource();
-        let surface_texture_view = match surface_resource.surface_texture_view {
+        let surface_texture_view = match window_surface.surface_texture_view {
             Some(ref surface_texture_view) => surface_texture_view,
             _ => unsafe {
                 debug_assert!(false, "Attempted to use None value.");
@@ -486,7 +525,7 @@ impl Renderer {
                     },
                 }],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &surface_resource.depth_texture.view,
+                    view: &window_surface.depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: true,
