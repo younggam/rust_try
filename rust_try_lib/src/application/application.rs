@@ -98,6 +98,7 @@ impl Application {
                     Event::NewEvents(start_cause) => match start_cause {
                         StartCause::Init => self.init(),
                         _ => {
+                            println!("------");
                             while 1.0 / self.frame_per_sec
                                 > self.utils.time_elapsed() - self.utils.time()
                             {

@@ -4,6 +4,18 @@ use cgmath::*;
 
 use winit::event::*;
 
+/*
+Window에 해당하는 input 과
+Device에 해당하는 input 구별 필요
+WindowInputs?
+    WindowId 기준 map
+    각 input이 Window 마다 유일함
+
+DeviceInputs?
+    DeviceId 기준 map <DeviceId, Vec<Device>>
+    각 input이 Device 마다 유일함 -> but 그게 중요한가?
+    windowid는 사용자 측에서 관리할 이유가 많지만 DeviceId는 사용자측에서 굳이? -> primary 기능
+*/
 pub struct Inputs {
     keyboard: KeyBoard,
     cursor: Cursor,
