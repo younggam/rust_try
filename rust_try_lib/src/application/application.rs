@@ -98,7 +98,7 @@ impl Application {
                     Event::NewEvents(start_cause) => match start_cause {
                         StartCause::Init => self.init(),
                         _ => {
-                            println!("------");
+                            // println!("------");
                             while 1.0 / self.frame_per_sec
                                 > self.utils.time_elapsed() - self.utils.time()
                             {
@@ -120,9 +120,11 @@ impl Application {
                         WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                             self.resize(window_id, *new_inner_size)
                         }
-                        _ => self.inputs.handle_input(event),
+                        _ => self.inputs.handle_window_input(window_id, event),
                     },
-                    Event::DeviceEvent { .. } => {}
+                    Event::DeviceEvent { device_id, event } => {
+                        self.inputs.handle_device_input(device_id, event);
+                    }
                     Event::UserEvent(_) => {}
                     Event::Suspended => {}
                     Event::Resumed => {}

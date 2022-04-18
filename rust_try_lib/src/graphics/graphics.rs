@@ -479,10 +479,10 @@ impl Renderer {
         graphics: &Graphics,
         target_window_id: WindowId,
         view_proj_matrix: Matrix4<f32>,
-    ) {
+    ) -> Result<(), ()> {
         let window_surface = match graphics.window_surface(target_window_id) {
             Some(window_surface) => window_surface,
-            _ => return,
+            _ => return Err(()),
         };
 
         let surface_texture_view = match window_surface.surface_texture_view {
@@ -590,6 +590,8 @@ impl Renderer {
             .queue
             .submit(std::iter::once(encoder.finish()));
         self.batch.instances.clear();
+
+        Ok(())
     }
 
     pub fn batch(

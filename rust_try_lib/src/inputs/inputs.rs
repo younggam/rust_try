@@ -1,8 +1,8 @@
 use super::*;
 
-use cgmath::*;
+use std::collections::HashMap;
 
-use winit::event::*;
+use winit::{event::*, window::WindowId};
 
 /*
 Window에 해당하는 input 과
@@ -17,20 +17,86 @@ DeviceInputs?
     windowid는 사용자 측에서 관리할 이유가 많지만 DeviceId는 사용자측에서 굳이? -> primary 기능
 */
 pub struct Inputs {
+    window_inputs: HashMap<WindowId, WindowInput>,
+    device_inputs: DeviceInputs,
+}
+
+impl Inputs {
+    pub(crate) fn new() -> Self {
+        Self {
+            window_inputs: HashMap::new(),
+            device_inputs: DeviceInputs::new(),
+        }
+    }
+
+    pub fn window_keyboard(&self, window_id: WindowId) -> Option<&KeyBoard> {
+        match self.window_inputs.get(&window_id) {
+            Some(window_input) => Some(window_input.keyboard()),
+            _ => None,
+        }
+    }
+
+    pub fn device_keyboard(&self, device_id: Option<DeviceId>) -> Option<&KeyBoard> {
+        self.device_inputs.keyboard(device_id)
+    }
+
+    pub fn cursor(&self, window_id: WindowId) -> Option<&Cursor> {
+        match self.window_inputs.get(&window_id) {
+            Some(window_input) => Some(window_input.cursor()),
+            _ => None,
+        }
+    }
+}
+
+impl Inputs {
+    pub(crate) fn pre_update(&mut self) {
+        for window_input in self.window_inputs.values_mut() {
+            window_input.pre_update();
+        }
+        self.device_inputs.pre_update();
+    }
+
+    pub(crate) fn handle_window_input(&mut self, window_id: WindowId, input: WindowEvent) {
+        match self.window_inputs.get_mut(&window_id) {
+            Some(window_input) => window_input.handle_input(input),
+            _ => {
+                let mut window_input = WindowInput::new();
+                window_input.handle_input(input);
+                self.window_inputs.insert(window_id, window_input);
+            }
+        }
+    }
+
+    pub(crate) fn handle_device_input(&mut self, device_id: DeviceId, input: DeviceEvent) {
+        self.device_inputs.handle_input(device_id, input);
+    }
+}
+
+//
+
+pub struct WindowInput {
     keyboard: KeyBoard,
     cursor: Cursor,
 }
 
-impl Inputs {
+impl WindowInput {
     pub(crate) fn new() -> Self {
         Self {
             keyboard: KeyBoard::new(),
             cursor: Cursor::new(),
         }
     }
+
+    pub fn keyboard(&self) -> &KeyBoard {
+        &self.keyboard
+    }
+
+    pub fn cursor(&self) -> &Cursor {
+        &self.cursor
+    }
 }
 
-impl Inputs {
+impl WindowInput {
     pub(crate) fn pre_update(&mut self) {
         self.keyboard.pre_update();
         self.cursor.pre_update();
@@ -42,61 +108,69 @@ impl Inputs {
             WindowEvent::CursorMoved { .. }
             | WindowEvent::CursorEntered { .. }
             | WindowEvent::CursorLeft { .. } => self.cursor.handle_input(input),
-            WindowEvent::MouseWheel { delta, phase, .. } => {
-                println!("{:?} {:?}", delta, phase)
+            WindowEvent::MouseWheel { .. } => {
+                println!("{:?}", input)
             }
-            WindowEvent::MouseInput { state, button, .. } => {
-                println!("{:?} {:?}", state, button)
+            WindowEvent::MouseInput { .. } => {
+                println!("{:?}", input)
             }
             _ => {}
         }
     }
 }
 
-impl Inputs {
-    pub fn is_key_signaled(&self, key: KeyCode) -> bool {
-        self.keyboard.is_signaled(key)
+//
+
+pub struct DeviceInputs {
+    keyboards: HashMap<DeviceId, KeyBoard>,
+    primary_keyboard_id: Option<DeviceId>,
+}
+
+impl DeviceInputs {
+    pub(crate) fn new() -> Self {
+        Self {
+            keyboards: HashMap::new(),
+            primary_keyboard_id: None,
+        }
     }
 
-    pub fn are_keys_signaled(&self, keys: &[KeyCode]) -> bool {
-        self.keyboard.are_signaled(keys)
-    }
-
-    pub fn is_key_pressed(&self, key: KeyCode) -> bool {
-        self.keyboard.is_pressed(key)
-    }
-
-    pub fn are_keys_pressed(&self, keys: &[KeyCode]) -> bool {
-        self.keyboard.are_pressed(keys)
-    }
-
-    pub fn is_key_released(&self, key: KeyCode) -> bool {
-        self.keyboard.is_released(key)
-    }
-
-    pub fn are_keys_released(&self, keys: &[KeyCode]) -> bool {
-        self.keyboard.are_released(keys)
-    }
-
-    pub fn is_key_just_pressed(&self, key: KeyCode) -> bool {
-        self.keyboard.is_just_pressed(key)
-    }
-
-    pub fn are_keys_just_pressed(&self, keys: &[KeyCode]) -> bool {
-        self.keyboard.are_just_pressed(keys)
-    }
-
-    pub fn is_key_just_released(&self, key: KeyCode) -> bool {
-        self.keyboard.is_just_released(key)
-    }
-
-    pub fn are_keys_just_released(&self, keys: &[KeyCode]) -> bool {
-        self.keyboard.are_just_released(keys)
+    pub fn keyboard(&self, device_id: Option<DeviceId>) -> Option<&KeyBoard> {
+        match device_id {
+            Some(device_id) => self.keyboards.get(&device_id),
+            _ => match self.primary_keyboard_id {
+                Some(primary_keyboard_id) => self.keyboards.get(&primary_keyboard_id),
+                _ => None,
+            },
+        }
     }
 }
 
-impl Inputs {
-    pub fn cursor_motion(&self) -> Vector2<f32> {
-        self.cursor.motion()
+impl DeviceInputs {
+    pub(crate) fn pre_update(&mut self) {
+        for keyboard in self.keyboards.values_mut() {
+            keyboard.pre_update();
+        }
+    }
+
+    pub(crate) fn handle_input(&mut self, device_id: DeviceId, input: DeviceEvent) {
+        match input {
+            DeviceEvent::Removed => {
+                self.keyboards.remove(&device_id);
+                println!("{:?}", device_id);
+                self.primary_keyboard_id = self.keyboards.keys().next().copied();
+            }
+            DeviceEvent::Key(input) => match self.keyboards.get_mut(&device_id) {
+                Some(keyboard) => keyboard.handle_input(input),
+                _ => {
+                    let mut keyboard = KeyBoard::new();
+                    keyboard.handle_input(input);
+                    if let None = self.primary_keyboard_id {
+                        self.primary_keyboard_id = Some(device_id);
+                    }
+                    self.keyboards.insert(device_id, keyboard);
+                }
+            },
+            _ => {}
+        }
     }
 }

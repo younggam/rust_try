@@ -40,6 +40,55 @@ impl InitialScene {
     }
 }
 
+impl InitialScene {
+    fn handle_input(&mut self, utils: &Utils, inputs: &Inputs) {
+        if let Some(keyboard) = inputs.window_keyboard(self.target_window_id) {
+            let forward = if keyboard.is_pressed(KeyCode::W) {
+                1f32
+            } else {
+                0f32
+            };
+            let backward = if keyboard.is_pressed(KeyCode::S) {
+                1f32
+            } else {
+                0f32
+            };
+            let right = if keyboard.is_pressed(KeyCode::D) {
+                1f32
+            } else {
+                0f32
+            };
+            let left = if keyboard.is_pressed(KeyCode::A) {
+                1f32
+            } else {
+                0f32
+            };
+            let up = if keyboard.is_pressed(KeyCode::Space) {
+                1f32
+            } else {
+                0f32
+            };
+            let down = if keyboard.is_pressed(KeyCode::LShift) {
+                1f32
+            } else {
+                0f32
+            };
+            self.camera.r#move(
+                utils.time_delta() as f32,
+                forward - backward,
+                right - left,
+                up - down,
+            );
+        };
+
+        if let Some(cursor) = inputs.cursor(self.target_window_id) {
+            let cursor_motion = cursor.motion();
+            self.camera
+                .rotate(cursor_motion.magnitude(), cursor_motion.x, cursor_motion.y);
+        }
+    }
+}
+
 impl Scene for InitialScene {
     fn enter(&mut self) {}
 
@@ -51,46 +100,7 @@ impl Scene for InitialScene {
     }
 
     fn update(&mut self, utils: &Utils, inputs: &Inputs) {
-        let forward = if inputs.is_key_pressed(KeyCode::W) {
-            1f32
-        } else {
-            0f32
-        };
-        let backward = if inputs.is_key_pressed(KeyCode::S) {
-            1f32
-        } else {
-            0f32
-        };
-        let right = if inputs.is_key_pressed(KeyCode::D) {
-            1f32
-        } else {
-            0f32
-        };
-        let left = if inputs.is_key_pressed(KeyCode::A) {
-            1f32
-        } else {
-            0f32
-        };
-        let up = if inputs.is_key_pressed(KeyCode::Space) {
-            1f32
-        } else {
-            0f32
-        };
-        let down = if inputs.is_key_pressed(KeyCode::LShift) {
-            1f32
-        } else {
-            0f32
-        };
-        self.camera.r#move(
-            utils.time_delta() as f32,
-            forward - backward,
-            right - left,
-            up - down,
-        );
-
-        let cursor_motion = inputs.cursor_motion();
-        self.camera
-            .rotate(cursor_motion.magnitude(), cursor_motion.x, cursor_motion.y);
+        self.handle_input(utils, inputs);
     }
 
     fn render(&mut self, graphics: &Graphics) {
@@ -126,7 +136,7 @@ impl Scene for InitialScene {
                 );
             }
         }
-        self.renderer.render(
+        let _ = self.renderer.render(
             &graphics,
             self.target_window_id,
             Matrix4::<f32>::from(self.projection) * self.camera.view_matrix(),
