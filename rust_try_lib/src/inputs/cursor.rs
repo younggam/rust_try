@@ -19,6 +19,10 @@ impl Cursor {
         }
     }
 
+    pub fn position(&self) -> Point2<f32> {
+        self.position
+    }
+
     pub fn motion(&self) -> Vector2<f32> {
         self.position - self.prev_position
     }

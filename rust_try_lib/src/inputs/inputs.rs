@@ -4,18 +4,12 @@ use std::collections::HashMap;
 
 use winit::{event::*, window::WindowId};
 
-/*
-Window에 해당하는 input 과
-Device에 해당하는 input 구별 필요
-WindowInputs?
-    WindowId 기준 map
-    각 input이 Window 마다 유일함
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ElementState {
+    Pressed,
+    Released,
+}
 
-DeviceInputs?
-    DeviceId 기준 map <DeviceId, Vec<Device>>
-    각 input이 Device 마다 유일함 -> but 그게 중요한가?
-    windowid는 사용자 측에서 관리할 이유가 많지만 DeviceId는 사용자측에서 굳이? -> primary 기능
-*/
 pub struct Inputs {
     window_inputs: HashMap<WindowId, WindowInput>,
     device_inputs: DeviceInputs,
@@ -170,6 +164,7 @@ impl DeviceInputs {
                     self.keyboards.insert(device_id, keyboard);
                 }
             },
+            DeviceEvent::Button { .. } => println!("{:?}", input),
             _ => {}
         }
     }
