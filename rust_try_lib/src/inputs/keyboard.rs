@@ -1,4 +1,4 @@
-use super::inputs::ElementState;
+use super::buttons::ElementState;
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +168,12 @@ pub enum KeyCode {
     Cut,
 }
 
+impl From<KeyCode> for usize {
+    fn from(key: KeyCode) -> Self {
+        key as usize
+    }
+}
+
 pub struct KeyBoard {
     signal: [bool; 163],
     current: [ElementState; 163],
@@ -175,7 +181,7 @@ pub struct KeyBoard {
 }
 
 impl KeyBoard {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             signal: [false; 163],
             current: [ElementState::Released; 163],

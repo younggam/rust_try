@@ -4,19 +4,13 @@ use std::collections::HashMap;
 
 use winit::{event::*, window::WindowId};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ElementState {
-    Pressed,
-    Released,
-}
-
 pub struct Inputs {
     window_inputs: HashMap<WindowId, WindowInput>,
     device_inputs: DeviceInputs,
 }
 
 impl Inputs {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             window_inputs: HashMap::new(),
             device_inputs: DeviceInputs::new(),
@@ -74,7 +68,7 @@ pub struct WindowInput {
 }
 
 impl WindowInput {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             keyboard: KeyBoard::new(),
             cursor: Cursor::new(),
@@ -121,7 +115,7 @@ pub struct DeviceInputs {
 }
 
 impl DeviceInputs {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             keyboards: HashMap::new(),
             primary_keyboard_id: None,
@@ -149,9 +143,10 @@ impl DeviceInputs {
     pub(crate) fn handle_input(&mut self, device_id: DeviceId, input: DeviceEvent) {
         match input {
             DeviceEvent::Removed => {
-                self.keyboards.remove(&device_id);
                 println!("{:?}", device_id);
-                self.primary_keyboard_id = self.keyboards.keys().next().copied();
+                if let Some(_) = self.keyboards.remove(&device_id) {
+                    self.primary_keyboard_id = self.keyboards.keys().next().copied();
+                }
             }
             DeviceEvent::Key(input) => match self.keyboards.get_mut(&device_id) {
                 Some(keyboard) => keyboard.handle_input(input),

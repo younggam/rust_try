@@ -33,12 +33,12 @@ impl Cursor {
 }
 
 impl Cursor {
-    pub fn pre_update(&mut self) {
+    pub(crate) fn pre_update(&mut self) {
         self.prev_position = self.position;
         self.prev_activated = self.activated;
     }
 
-    pub fn handle_input(&mut self, input: WindowEvent) {
+    pub(crate) fn handle_input(&mut self, input: WindowEvent) {
         match input {
             WindowEvent::CursorMoved { position, .. } => {
                 self.position = point2(position.x as f32, -position.y as f32);
