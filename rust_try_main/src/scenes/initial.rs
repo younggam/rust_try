@@ -5,7 +5,7 @@ use rust_try_lib::{
     cgmath::*,
     graphics::elements::*,
     graphics::{Graphics, Renderer},
-    inputs::{Inputs, KeyCode},
+    inputs::*,
     utils::Utils,
     winit,
     winit::window::WindowId,

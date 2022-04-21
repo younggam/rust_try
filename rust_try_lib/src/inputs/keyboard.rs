@@ -1,4 +1,4 @@
-use super::buttons::ElementState;
+use super::buttons::*;
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -12,7 +12,7 @@ pub enum KeyCode {
     Key7,
     Key8,
     Key9,
-    Key0,
+    Key0, //10
     A,
     B,
     C,
@@ -22,7 +22,7 @@ pub enum KeyCode {
     G,
     H,
     I,
-    J,
+    J, //20
     K,
     L,
     M,
@@ -32,7 +32,7 @@ pub enum KeyCode {
     Q,
     R,
     S,
-    T,
+    T, //30
     U,
     V,
     W,
@@ -42,7 +42,7 @@ pub enum KeyCode {
     Escape,
     F1,
     F2,
-    F3,
+    F3, //40
     F4,
     F5,
     F6,
@@ -52,7 +52,7 @@ pub enum KeyCode {
     F10,
     F11,
     F12,
-    F13,
+    F13, //50
     F14,
     F15,
     F16,
@@ -62,7 +62,7 @@ pub enum KeyCode {
     F20,
     F21,
     F22,
-    F23,
+    F23, //60
     F24,
     Snapshot,
     Scroll,
@@ -72,7 +72,7 @@ pub enum KeyCode {
     Delete,
     End,
     PageDown,
-    PageUp,
+    PageUp, //70
     Left,
     Up,
     Right,
@@ -82,7 +82,7 @@ pub enum KeyCode {
     Space,
     Compose,
     Caret,
-    Numlock,
+    Numlock, //80
     Numpad0,
     Numpad1,
     Numpad2,
@@ -92,7 +92,7 @@ pub enum KeyCode {
     Numpad6,
     Numpad7,
     Numpad8,
-    Numpad9,
+    Numpad9, //90
     NumpadAdd,
     NumpadDivide,
     NumpadDecimal,
@@ -102,7 +102,7 @@ pub enum KeyCode {
     NumpadMultiply,
     NumpadSubtract,
     AbntC1,
-    AbntC2,
+    AbntC2, //100
     Apostrophe,
     Apps,
     Asterisk,
@@ -112,7 +112,7 @@ pub enum KeyCode {
     Calculator,
     Capital,
     Colon,
-    Comma,
+    Comma, //110
     Convert,
     Equals,
     Grave,
@@ -122,7 +122,7 @@ pub enum KeyCode {
     LBracket,
     LControl,
     LShift,
-    LWin,
+    LWin, //120
     Mail,
     MediaSelect,
     MediaStop,
@@ -132,7 +132,7 @@ pub enum KeyCode {
     NavigateForward,
     NavigateBackward,
     NextTrack,
-    NoConvert,
+    NoConvert, //130
     OEM102,
     Period,
     PlayPause,
@@ -142,7 +142,7 @@ pub enum KeyCode {
     RAlt,
     RBracket,
     RControl,
-    RShift,
+    RShift, //140
     RWin,
     Semicolon,
     Slash,
@@ -152,7 +152,7 @@ pub enum KeyCode {
     Tab,
     Underline,
     Unlabeled,
-    VolumeDown,
+    VolumeDown, //150
     VolumeUp,
     Wake,
     WebBack,
@@ -162,10 +162,10 @@ pub enum KeyCode {
     WebRefresh,
     WebSearch,
     WebStop,
-    Yen,
+    Yen, //160
     Copy,
     Paste,
-    Cut,
+    Cut, //163
 }
 
 impl From<KeyCode> for usize {
@@ -175,87 +175,37 @@ impl From<KeyCode> for usize {
 }
 
 pub struct KeyBoard {
-    signal: [bool; 163],
-    current: [ElementState; 163],
-    before: [ElementState; 163],
+    buttons: Buttons,
 }
 
 impl KeyBoard {
     pub fn new() -> Self {
         Self {
-            signal: [false; 163],
-            current: [ElementState::Released; 163],
-            before: [ElementState::Released; 163],
+            buttons: Buttons::new(163),
         }
-    }
-
-    pub fn is_signaled(&self, key: KeyCode) -> bool {
-        self.signal[key as usize]
-    }
-
-    pub fn are_signaled(&self, keys: &[KeyCode]) -> bool {
-        keys.iter().all(|key| self.signal[*key as usize])
-    }
-
-    pub fn is_pressed(&self, key: KeyCode) -> bool {
-        self.current[key as usize] == ElementState::Pressed
-    }
-
-    pub fn are_pressed(&self, keys: &[KeyCode]) -> bool {
-        keys.iter()
-            .all(|key| self.current[*key as usize] == ElementState::Pressed)
-    }
-
-    pub fn is_released(&self, key: KeyCode) -> bool {
-        self.current[key as usize] == ElementState::Released
-    }
-
-    pub fn are_released(&self, keys: &[KeyCode]) -> bool {
-        keys.iter()
-            .all(|key| self.current[*key as usize] == ElementState::Released)
-    }
-
-    pub fn is_just_pressed(&self, key: KeyCode) -> bool {
-        let key = key as usize;
-        self.current[key] == ElementState::Pressed && self.before[key] == ElementState::Released
-    }
-
-    pub fn are_just_pressed(&self, keys: &[KeyCode]) -> bool {
-        keys.iter().all(|key| {
-            let key = *key as usize;
-            self.current[key] == ElementState::Pressed && self.before[key] == ElementState::Released
-        })
-    }
-
-    pub fn is_just_released(&self, key: KeyCode) -> bool {
-        let key = key as usize;
-        self.current[key] == ElementState::Released && self.before[key] == ElementState::Pressed
-    }
-
-    pub fn are_just_released(&self, keys: &[KeyCode]) -> bool {
-        keys.iter().all(|key| {
-            let key = *key as usize;
-            self.current[key] == ElementState::Released && self.before[key] == ElementState::Pressed
-        })
     }
 }
 
 impl KeyBoard {
-    //Updates keyboard states before polling events
     pub(crate) fn pre_update(&mut self) {
-        self.signal = [false; 163];
-        self.before = self.current;
+        self.buttons.pre_update();
     }
 
     pub(crate) fn handle_input(&mut self, keyboard_input: winit::event::KeyboardInput) {
         if let Some(key) = keyboard_input.virtual_keycode {
-            let key = key as usize;
             let state = match keyboard_input.state {
-                winit::event::ElementState::Pressed => ElementState::Pressed,
-                winit::event::ElementState::Released => ElementState::Released,
+                winit::event::ElementState::Pressed => ButtonState::Pressed,
+                winit::event::ElementState::Released => ButtonState::Released,
             };
-            self.signal[key] = true;
-            self.current[key] = state;
+            self.buttons.handle_input(key as usize, state);
         }
+    }
+}
+
+impl std::ops::Deref for KeyBoard {
+    type Target = Buttons;
+
+    fn deref(&self) -> &Self::Target {
+        &self.buttons
     }
 }

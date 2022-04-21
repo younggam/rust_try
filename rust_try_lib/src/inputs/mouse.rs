@@ -1,4 +1,4 @@
-use super::buttons::ElementState;
+use super::buttons::*;
 
 use cgmath::*;
 
@@ -16,7 +16,7 @@ pub struct Mouse {
     motion: Vector2<f32>,
     wheel: f32,
 
-    buttons: Vec<ElementState>,
+    buttons: Buttons,
 }
 
 impl Mouse {
@@ -25,7 +25,7 @@ impl Mouse {
             motion: Vector2::zero(),
             wheel: 0.0,
 
-            buttons: Vec::with_capacity(3),
+            buttons: Buttons::new(3),
         }
     }
 
@@ -45,18 +45,23 @@ impl Mouse {
             MouseButton::Other(val) => val,
         }
     }
-
-    pub fn is_pressed(&self, button: MouseButton) -> bool {
-        match self.buttons.get(Self::button_to_index(button)) {
-            Some(state) => *state == ElementState::Pressed,
-            _ => false,
-        }
-    }
 }
 
 impl Mouse {
     pub(crate) fn pre_update(&mut self) {
         self.motion = Vector2::zero();
         self.wheel = 0.0;
+
+        self.buttons.pre_update();
+    }
+
+    // pub(crate) fn handle_input(&mut self,)
+}
+
+impl std::ops::Deref for Mouse {
+    type Target = Buttons;
+
+    fn deref(&self) -> &Self::Target {
+        &self.buttons
     }
 }

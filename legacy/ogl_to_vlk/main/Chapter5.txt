@@ -28,7 +28,7 @@ fn main() {
                 } => match (virtual_keycode, state) {
                     (
                         Some(winit::event::VirtualKeyCode::Escape),
-                        winit::event::ElementState::Pressed,
+                        winit::event::ButtonState::Pressed,
                     ) => {
                         dbg!();
                         *control_flow = winit::event_loop::ControlFlow::Exit
