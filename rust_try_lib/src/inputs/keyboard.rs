@@ -193,11 +193,8 @@ impl KeyBoard {
 
     pub(crate) fn handle_input(&mut self, keyboard_input: winit::event::KeyboardInput) {
         if let Some(key) = keyboard_input.virtual_keycode {
-            let state = match keyboard_input.state {
-                winit::event::ElementState::Pressed => ButtonState::Pressed,
-                winit::event::ElementState::Released => ButtonState::Released,
-            };
-            self.buttons.handle_input(key as usize, state);
+            self.buttons
+                .handle_input(key as usize, keyboard_input.state);
         }
     }
 }

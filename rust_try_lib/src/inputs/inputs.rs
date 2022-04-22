@@ -34,6 +34,13 @@ impl Inputs {
             _ => None,
         }
     }
+
+    pub fn window_mouse(&self, window_id: WindowId) -> Option<&Mouse> {
+        match self.window_inputs.get(&window_id) {
+            Some(window_input) => Some(window_input.mouse()),
+            _ => None,
+        }
+    }
 }
 
 impl Inputs {
@@ -65,6 +72,7 @@ impl Inputs {
 pub struct WindowInput {
     keyboard: KeyBoard,
     cursor: Cursor,
+    mouse: Mouse,
 }
 
 impl WindowInput {
@@ -72,6 +80,7 @@ impl WindowInput {
         Self {
             keyboard: KeyBoard::new(),
             cursor: Cursor::new(),
+            mouse: Mouse::new(),
         }
     }
 
@@ -82,12 +91,17 @@ impl WindowInput {
     pub fn cursor(&self) -> &Cursor {
         &self.cursor
     }
+
+    pub fn mouse(&self) -> &Mouse {
+        &self.mouse
+    }
 }
 
 impl WindowInput {
     pub(crate) fn pre_update(&mut self) {
         self.keyboard.pre_update();
         self.cursor.pre_update();
+        self.mouse.pre_update();
     }
 
     pub(crate) fn handle_input(&mut self, input: WindowEvent) {
@@ -96,11 +110,8 @@ impl WindowInput {
             WindowEvent::CursorMoved { .. }
             | WindowEvent::CursorEntered { .. }
             | WindowEvent::CursorLeft { .. } => self.cursor.handle_input(input),
-            WindowEvent::MouseWheel { .. } => {
-                println!("{:?}", input)
-            }
-            WindowEvent::MouseInput { .. } => {
-                println!("{:?}", input)
+            WindowEvent::MouseWheel { .. } | WindowEvent::MouseInput { .. } => {
+                self.mouse.handle_window_input(input)
             }
             _ => {}
         }

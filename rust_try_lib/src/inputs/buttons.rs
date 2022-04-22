@@ -1,11 +1,22 @@
+use winit::event::ElementState;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonState {
     Pressed,
     Released,
 }
 
+impl From<ElementState> for ButtonState {
+    fn from(state: ElementState) -> ButtonState {
+        match state {
+            ElementState::Pressed => ButtonState::Pressed,
+            ElementState::Released => ButtonState::Released,
+        }
+    }
+}
+
 pub trait HasButtons {
-    fn handle_input(&mut self, index: impl Into<usize> + Copy, state: ButtonState);
+    fn handle_input(&mut self, index: impl Into<usize> + Copy, state: impl Into<ButtonState>);
 
     fn is_signaled(&self, index: impl Into<usize> + Copy) -> bool;
 
@@ -38,9 +49,9 @@ pub struct Buttons {
 impl Buttons {
     pub fn new(number: usize) -> Self {
         Self {
-            signal: Vec::with_capacity(number),
-            current: Vec::with_capacity(number),
-            before: Vec::with_capacity(number),
+            signal: vec![false; number],
+            current: vec![ButtonState::Released; number],
+            before: vec![ButtonState::Released; number],
             number: number,
         }
     }
@@ -55,21 +66,21 @@ impl Buttons {
 }
 
 impl HasButtons for Buttons {
-    fn handle_input(&mut self, index: impl Into<usize> + Copy, state: ButtonState) {
+    fn handle_input(&mut self, index: impl Into<usize> + Copy, state: impl Into<ButtonState>) {
         let index = index.into();
-        if index > self.number {
-            self.signal.resize(index, false);
-            self.current.resize(index, ButtonState::Released);
-            self.before.resize(index, ButtonState::Released);
-            self.number = index;
+        if index >= self.number {
+            self.number = index + 1;
+            self.signal.resize(self.number, false);
+            self.current.resize(self.number, ButtonState::Released);
+            self.before.resize(self.number, ButtonState::Released);
         }
         self.signal[index] = true;
-        self.current[index] = state;
+        self.current[index] = state.into();
     }
 
     fn is_signaled(&self, index: impl Into<usize> + Copy) -> bool {
         let index = index.into();
-        if index > self.number {
+        if index >= self.number {
             return false;
         }
         self.signal[index]
@@ -77,7 +88,7 @@ impl HasButtons for Buttons {
 
     fn are_signaled(&self, indexes: &[impl Into<usize> + Copy]) -> bool {
         match indexes.last() {
-            Some(index) if self.number >= Into::<usize>::into(*index) => indexes
+            Some(index) if self.number > Into::<usize>::into(*index) => indexes
                 .iter()
                 .all(|index| self.signal[Into::<usize>::into(*index)]),
             _ => false,
@@ -86,7 +97,7 @@ impl HasButtons for Buttons {
 
     fn is_pressed(&self, index: impl Into<usize> + Copy) -> bool {
         let index = index.into();
-        if index > self.number {
+        if index >= self.number {
             return false;
         }
         self.current[index] == ButtonState::Pressed
@@ -94,7 +105,7 @@ impl HasButtons for Buttons {
 
     fn are_pressed(&self, indexes: &[impl Into<usize> + Copy]) -> bool {
         match indexes.last() {
-            Some(index) if self.number >= Into::<usize>::into(*index) => indexes
+            Some(index) if self.number > Into::<usize>::into(*index) => indexes
                 .iter()
                 .all(|index| self.current[Into::<usize>::into(*index)] == ButtonState::Pressed),
             _ => false,
@@ -103,7 +114,7 @@ impl HasButtons for Buttons {
 
     fn is_released(&self, index: impl Into<usize> + Copy) -> bool {
         let index = index.into();
-        if index > self.number {
+        if index >= self.number {
             return false;
         }
         self.current[index] == ButtonState::Released
@@ -111,7 +122,7 @@ impl HasButtons for Buttons {
 
     fn are_released(&self, indexes: &[impl Into<usize> + Copy]) -> bool {
         match indexes.last() {
-            Some(index) if self.number >= Into::<usize>::into(*index) => indexes
+            Some(index) if self.number > Into::<usize>::into(*index) => indexes
                 .iter()
                 .all(|index| self.current[Into::<usize>::into(*index)] == ButtonState::Released),
             _ => false,
@@ -120,7 +131,7 @@ impl HasButtons for Buttons {
 
     fn is_just_pressed(&self, index: impl Into<usize> + Copy) -> bool {
         let index = index.into();
-        if index > self.number {
+        if index >= self.number {
             return false;
         }
         self.current[index] == ButtonState::Pressed && self.before[index] == ButtonState::Released
@@ -128,7 +139,7 @@ impl HasButtons for Buttons {
 
     fn are_just_pressed(&self, indexes: &[impl Into<usize> + Copy]) -> bool {
         match indexes.last() {
-            Some(index) if self.number >= Into::<usize>::into(*index) => {
+            Some(index) if self.number > Into::<usize>::into(*index) => {
                 indexes.iter().all(|index| {
                     let index = Into::<usize>::into(*index);
                     self.current[index] == ButtonState::Pressed
@@ -141,7 +152,7 @@ impl HasButtons for Buttons {
 
     fn is_just_released(&self, index: impl Into<usize> + Copy) -> bool {
         let index = index.into();
-        if index > self.number {
+        if index >= self.number {
             return false;
         }
         self.current[index] == ButtonState::Released && self.before[index] == ButtonState::Pressed
@@ -149,7 +160,7 @@ impl HasButtons for Buttons {
 
     fn are_just_released(&self, indexes: &[impl Into<usize> + Copy]) -> bool {
         match indexes.last() {
-            Some(index) if self.number >= Into::<usize>::into(*index) => {
+            Some(index) if self.number > Into::<usize>::into(*index) => {
                 indexes.iter().all(|index| {
                     let index = Into::<usize>::into(*index);
                     self.current[index] == ButtonState::Released
