@@ -19,26 +19,30 @@ pub struct Buttons {
     signal: Vec<bool>,
     current: Vec<ButtonState>,
     before: Vec<ButtonState>,
-    number: usize,
+    size: usize,
 }
 
 impl Buttons {
-    pub fn new(number: usize) -> Self {
+    pub fn new(size: usize) -> Self {
         Self {
-            signal: vec![false; number],
-            current: vec![ButtonState::Released; number],
-            before: vec![ButtonState::Released; number],
-            number: number,
+            signal: vec![false; size],
+            current: vec![ButtonState::Released; size],
+            before: vec![ButtonState::Released; size],
+            size: size,
         }
     }
 
-    pub(crate) fn handle_input(&mut self, index: impl Into<usize> + Copy, state: impl Into<ButtonState>) {
+    pub(crate) fn handle_input(
+        &mut self,
+        index: impl Into<usize> + Copy,
+        state: impl Into<ButtonState>,
+    ) {
         let index = index.into();
-        if index >= self.number {
-            self.number = index + 1;
-            self.signal.resize(self.number, false);
-            self.current.resize(self.number, ButtonState::Released);
-            self.before.resize(self.number, ButtonState::Released);
+        if index >= self.size {
+            self.size = index + 1;
+            self.signal.resize(self.size, false);
+            self.current.resize(self.size, ButtonState::Released);
+            self.before.resize(self.size, ButtonState::Released);
         }
         self.signal[index] = true;
         self.current[index] = state.into();
@@ -46,7 +50,7 @@ impl Buttons {
 
     pub fn is_signaled(&self, index: impl Into<usize> + Copy) -> bool {
         let index = index.into();
-        if index >= self.number {
+        if index >= self.size {
             return false;
         }
         self.signal[index]
@@ -54,7 +58,7 @@ impl Buttons {
 
     pub fn are_signaled(&self, indexes: &[impl Into<usize> + Copy]) -> bool {
         match indexes.last() {
-            Some(index) if self.number > Into::<usize>::into(*index) => indexes
+            Some(index) if self.size > Into::<usize>::into(*index) => indexes
                 .iter()
                 .all(|index| self.signal[Into::<usize>::into(*index)]),
             _ => false,
@@ -63,7 +67,7 @@ impl Buttons {
 
     pub fn is_pressed(&self, index: impl Into<usize> + Copy) -> bool {
         let index = index.into();
-        if index >= self.number {
+        if index >= self.size {
             return false;
         }
         self.current[index] == ButtonState::Pressed
@@ -71,7 +75,7 @@ impl Buttons {
 
     pub fn are_pressed(&self, indexes: &[impl Into<usize> + Copy]) -> bool {
         match indexes.last() {
-            Some(index) if self.number > Into::<usize>::into(*index) => indexes
+            Some(index) if self.size > Into::<usize>::into(*index) => indexes
                 .iter()
                 .all(|index| self.current[Into::<usize>::into(*index)] == ButtonState::Pressed),
             _ => false,
@@ -80,7 +84,7 @@ impl Buttons {
 
     pub fn is_released(&self, index: impl Into<usize> + Copy) -> bool {
         let index = index.into();
-        if index >= self.number {
+        if index >= self.size {
             return false;
         }
         self.current[index] == ButtonState::Released
@@ -88,7 +92,7 @@ impl Buttons {
 
     pub fn are_released(&self, indexes: &[impl Into<usize> + Copy]) -> bool {
         match indexes.last() {
-            Some(index) if self.number > Into::<usize>::into(*index) => indexes
+            Some(index) if self.size > Into::<usize>::into(*index) => indexes
                 .iter()
                 .all(|index| self.current[Into::<usize>::into(*index)] == ButtonState::Released),
             _ => false,
@@ -97,7 +101,7 @@ impl Buttons {
 
     pub fn is_just_pressed(&self, index: impl Into<usize> + Copy) -> bool {
         let index = index.into();
-        if index >= self.number {
+        if index >= self.size {
             return false;
         }
         self.current[index] == ButtonState::Pressed && self.before[index] == ButtonState::Released
@@ -105,20 +109,18 @@ impl Buttons {
 
     pub fn are_just_pressed(&self, indexes: &[impl Into<usize> + Copy]) -> bool {
         match indexes.last() {
-            Some(index) if self.number > Into::<usize>::into(*index) => {
-                indexes.iter().all(|index| {
-                    let index = Into::<usize>::into(*index);
-                    self.current[index] == ButtonState::Pressed
-                        && self.before[index] == ButtonState::Released
-                })
-            }
+            Some(index) if self.size > Into::<usize>::into(*index) => indexes.iter().all(|index| {
+                let index = Into::<usize>::into(*index);
+                self.current[index] == ButtonState::Pressed
+                    && self.before[index] == ButtonState::Released
+            }),
             _ => false,
         }
     }
 
     pub fn is_just_released(&self, index: impl Into<usize> + Copy) -> bool {
         let index = index.into();
-        if index >= self.number {
+        if index >= self.size {
             return false;
         }
         self.current[index] == ButtonState::Released && self.before[index] == ButtonState::Pressed
@@ -126,13 +128,11 @@ impl Buttons {
 
     pub fn are_just_released(&self, indexes: &[impl Into<usize> + Copy]) -> bool {
         match indexes.last() {
-            Some(index) if self.number > Into::<usize>::into(*index) => {
-                indexes.iter().all(|index| {
-                    let index = Into::<usize>::into(*index);
-                    self.current[index] == ButtonState::Released
-                        && self.before[index] == ButtonState::Pressed
-                })
-            }
+            Some(index) if self.size > Into::<usize>::into(*index) => indexes.iter().all(|index| {
+                let index = Into::<usize>::into(*index);
+                self.current[index] == ButtonState::Released
+                    && self.before[index] == ButtonState::Pressed
+            }),
             _ => false,
         }
     }
@@ -141,7 +141,13 @@ impl Buttons {
 impl Buttons {
     ///Updates buttons states before polling events
     pub(crate) fn pre_update(&mut self) {
-        self.signal = vec![false; self.number];
+        self.signal = vec![false; self.size];
         self.before.copy_from_slice(&self.current);
+    }
+
+    pub(crate) fn resize(&mut self, new_size: usize) {
+        self.signal.resize(new_size, false);
+        self.current.resize(new_size, ButtonState::Released);
+        self.before.resize(new_size, ButtonState::Released);
     }
 }

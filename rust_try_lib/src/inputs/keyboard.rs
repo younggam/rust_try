@@ -1,4 +1,4 @@
-use super::buttons::*;
+use super::{buttons::*, mock::*};
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +168,10 @@ pub enum KeyCode {
     Cut, //163
 }
 
+impl KeyCode {
+    const LEN: usize = 163;
+}
+
 impl From<KeyCode> for usize {
     fn from(key: KeyCode) -> Self {
         key as usize
@@ -181,7 +185,7 @@ pub struct Keyboard {
 impl Keyboard {
     pub fn new() -> Self {
         Self {
-            buttons: Buttons::new(163),
+            buttons: Buttons::new(KeyCode::LEN),
         }
     }
 }
@@ -204,5 +208,11 @@ impl std::ops::Deref for Keyboard {
 
     fn deref(&self) -> &Self::Target {
         &self.buttons
+    }
+}
+
+impl From<MockDevice> for Keyboard {
+    fn from(_: MockDevice) -> Self {
+        Self::new()
     }
 }

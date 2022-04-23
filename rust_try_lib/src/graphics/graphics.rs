@@ -19,17 +19,17 @@ pub struct GraphicsConfig {
 pub struct Graphics {
     config: GraphicsConfig,
 
-    core: Arc<GraphicsCore>,
-
-    primary_window_id: Option<WindowId>,
     window_surfaces: HashMap<WindowId, WindowSurface>,
+    primary_window_id: Option<WindowId>,
+
+    core: Arc<GraphicsCore>,
 }
 
 pub struct GraphicsCore {
-    instance: wgpu::Instance,
-    adapter: wgpu::Adapter,
-    device: wgpu::Device,
     queue: wgpu::Queue,
+    device: wgpu::Device,
+    adapter: wgpu::Adapter,
+    instance: wgpu::Instance,
 }
 
 impl Graphics {

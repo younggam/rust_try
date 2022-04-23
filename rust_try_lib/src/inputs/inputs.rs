@@ -41,6 +41,10 @@ impl Inputs {
             _ => None,
         }
     }
+
+    pub fn device_mouse(&self, device_id: Option<DeviceId>) -> Option<&Mouse> {
+        self.device_inputs.mouse(device_id)
+    }
 }
 
 impl Inputs {
@@ -52,7 +56,7 @@ impl Inputs {
     }
 
     pub(crate) fn handle_window_input(&mut self, window_id: WindowId, input: WindowEvent) {
-        let device_id = match self.window_inputs.get_mut(&window_id) {
+        let device = match self.window_inputs.get_mut(&window_id) {
             Some(window_input) => window_input.handle_input(input),
             _ => {
                 let mut window_input = WindowInput::new();
@@ -61,6 +65,10 @@ impl Inputs {
                 ret
             }
         };
+
+        if let Some(device) = device {
+            self.device_inputs.replace_mock(device.0, device.1);
+        }
     }
 
     pub(crate) fn handle_device_input(&mut self, device_id: DeviceId, input: DeviceEvent) {
@@ -105,13 +113,13 @@ impl WindowInput {
         self.mouse.pre_update();
     }
 
-    pub(crate) fn handle_input(&mut self, input: WindowEvent) -> Option<Device> {
+    pub(crate) fn handle_input(&mut self, input: WindowEvent) -> Option<(DeviceId, DeviceType)> {
         match input {
             WindowEvent::KeyboardInput {
                 device_id, input, ..
             } => {
                 self.keyboard.handle_input(input);
-                Some(Device::Keyboard(device_id))
+                Some((device_id, DeviceType::Keyboard))
             }
             WindowEvent::CursorMoved { .. }
             | WindowEvent::CursorEntered { .. }
@@ -127,11 +135,9 @@ impl WindowInput {
 //
 
 #[derive(Debug, Clone, Copy)]
-pub enum Device {
-    Keyboard(DeviceId),
-    Mouse(DeviceId),
-
-    Mock(DeviceId),
+pub enum DeviceType {
+    Keyboard,
+    Mouse,
 }
 
 //
@@ -139,6 +145,9 @@ pub enum Device {
 pub struct DeviceInputs {
     keyboards: HashMap<DeviceId, Keyboard>,
     primary_keyboard_id: Option<DeviceId>,
+
+    mouses: HashMap<DeviceId, Mouse>,
+    primary_mouse_id: Option<DeviceId>,
 
     mocks: HashMap<DeviceId, MockDevice>,
 }
@@ -148,6 +157,9 @@ impl DeviceInputs {
         Self {
             keyboards: HashMap::new(),
             primary_keyboard_id: None,
+
+            mouses: HashMap::new(),
+            primary_mouse_id: None,
 
             mocks: HashMap::new(),
         }
@@ -162,36 +174,80 @@ impl DeviceInputs {
             },
         }
     }
+
+    pub fn mouse(&self, device_id: Option<DeviceId>) -> Option<&Mouse> {
+        match device_id {
+            Some(device_id) => self.mouses.get(&device_id),
+            _ => match self.primary_mouse_id {
+                Some(primary_mouse_id) => self.mouses.get(&primary_mouse_id),
+                _ => None,
+            },
+        }
+    }
+
+    fn remove_device(&mut self, device_id: DeviceId) {
+        if let Some(_) = self.mocks.remove(&device_id) {
+        } else if let Some(_) = self.keyboards.remove(&device_id) {
+            self.primary_keyboard_id = self.keyboards.keys().next().copied();
+        } else if let Some(_) = self.mouses.remove(&device_id) {
+            self.primary_mouse_id = self.mouses.keys().next().copied();
+        }
+    }
 }
 
 impl DeviceInputs {
     pub(crate) fn pre_update(&mut self) {
+        for mock in self.mocks.values_mut() {
+            mock.pre_update();
+        }
         for keyboard in self.keyboards.values_mut() {
             keyboard.pre_update();
+        }
+        for mouse in self.mouses.values_mut() {
+            mouse.pre_update();
         }
     }
 
     pub(crate) fn handle_input(&mut self, device_id: DeviceId, input: DeviceEvent) {
         match input {
-            DeviceEvent::Removed => {
-                println!("{:?}", device_id);
-                if let Some(_) = self.keyboards.remove(&device_id) {
-                    self.primary_keyboard_id = self.keyboards.keys().next().copied();
+            DeviceEvent::Added => {
+                self.mocks.insert(device_id, MockDevice::new());
+            }
+            DeviceEvent::Removed => self.remove_device(device_id),
+            _ => {
+                if let Some(mock) = self.mocks.get_mut(&device_id) {
+                    if let Some(device_type) = mock.handle_input(&input) {
+                        self.replace_mock(device_id, device_type);
+                    }
+                }
+
+                if let Some(keyboard) = self.keyboards.get_mut(&device_id) {
+                    if let DeviceEvent::Key(input) = input {
+                        keyboard.handle_input(input);
+                    }
+                } else if let Some(mouse) = self.mouses.get_mut(&device_id) {
+                    mouse.handle_device_input(input);
                 }
             }
-            DeviceEvent::Key(input) => match self.keyboards.get_mut(&device_id) {
-                Some(keyboard) => keyboard.handle_input(input),
-                _ => {
-                    let mut keyboard = Keyboard::new();
-                    keyboard.handle_input(input);
+        }
+    }
+
+    pub(crate) fn replace_mock(&mut self, device_id: DeviceId, device_type: DeviceType) {
+        if let Some(mock) = self.mocks.remove(&device_id) {
+            match device_type {
+                DeviceType::Keyboard => {
                     if let None = self.primary_keyboard_id {
                         self.primary_keyboard_id = Some(device_id);
                     }
-                    self.keyboards.insert(device_id, keyboard);
+                    self.keyboards.insert(device_id, mock.into());
                 }
-            },
-            DeviceEvent::Button { .. } => println!("{:?}", input),
-            _ => {}
+                DeviceType::Mouse => {
+                    if let None = self.primary_mouse_id {
+                        self.primary_mouse_id = Some(device_id);
+                    }
+                    self.mouses.insert(device_id, mock.into());
+                }
+            }
         }
     }
 }

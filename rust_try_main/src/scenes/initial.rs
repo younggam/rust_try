@@ -82,9 +82,16 @@ impl InitialScene {
         };
 
         if let Some(cursor) = inputs.cursor(self.target_window_id) {
-            let cursor_motion = cursor.motion();
-            self.camera
-                .rotate(cursor_motion.magnitude(), cursor_motion.x, cursor_motion.y);
+            if cursor.is_entered() {
+                if let Some(mouse) = inputs.device_mouse(None) {
+                    let motion = if cursor.is_just_entered() {
+                        mouse.last_motion()
+                    } else {
+                        mouse.motion()
+                    };
+                    self.camera.rotate(motion.magnitude(), motion.x, motion.y);
+                }
+            }
         }
     }
 }
