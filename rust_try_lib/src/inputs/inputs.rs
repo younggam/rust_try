@@ -17,14 +17,14 @@ impl Inputs {
         }
     }
 
-    pub fn window_keyboard(&self, window_id: WindowId) -> Option<&KeyBoard> {
+    pub fn window_keyboard(&self, window_id: WindowId) -> Option<&Keyboard> {
         match self.window_inputs.get(&window_id) {
             Some(window_input) => Some(window_input.keyboard()),
             _ => None,
         }
     }
 
-    pub fn device_keyboard(&self, device_id: Option<DeviceId>) -> Option<&KeyBoard> {
+    pub fn device_keyboard(&self, device_id: Option<DeviceId>) -> Option<&Keyboard> {
         self.device_inputs.keyboard(device_id)
     }
 
@@ -52,14 +52,15 @@ impl Inputs {
     }
 
     pub(crate) fn handle_window_input(&mut self, window_id: WindowId, input: WindowEvent) {
-        match self.window_inputs.get_mut(&window_id) {
+        let device_id = match self.window_inputs.get_mut(&window_id) {
             Some(window_input) => window_input.handle_input(input),
             _ => {
                 let mut window_input = WindowInput::new();
-                window_input.handle_input(input);
+                let ret = window_input.handle_input(input);
                 self.window_inputs.insert(window_id, window_input);
+                ret
             }
-        }
+        };
     }
 
     pub(crate) fn handle_device_input(&mut self, device_id: DeviceId, input: DeviceEvent) {
@@ -70,7 +71,7 @@ impl Inputs {
 //
 
 pub struct WindowInput {
-    keyboard: KeyBoard,
+    keyboard: Keyboard,
     cursor: Cursor,
     mouse: Mouse,
 }
@@ -78,13 +79,13 @@ pub struct WindowInput {
 impl WindowInput {
     pub fn new() -> Self {
         Self {
-            keyboard: KeyBoard::new(),
+            keyboard: Keyboard::new(),
             cursor: Cursor::new(),
             mouse: Mouse::new(),
         }
     }
 
-    pub fn keyboard(&self) -> &KeyBoard {
+    pub fn keyboard(&self) -> &Keyboard {
         &self.keyboard
     }
 
@@ -104,25 +105,42 @@ impl WindowInput {
         self.mouse.pre_update();
     }
 
-    pub(crate) fn handle_input(&mut self, input: WindowEvent) {
+    pub(crate) fn handle_input(&mut self, input: WindowEvent) -> Option<Device> {
         match input {
-            WindowEvent::KeyboardInput { input, .. } => self.keyboard.handle_input(input),
+            WindowEvent::KeyboardInput {
+                device_id, input, ..
+            } => {
+                self.keyboard.handle_input(input);
+                Some(Device::Keyboard(device_id))
+            }
             WindowEvent::CursorMoved { .. }
             | WindowEvent::CursorEntered { .. }
             | WindowEvent::CursorLeft { .. } => self.cursor.handle_input(input),
             WindowEvent::MouseWheel { .. } | WindowEvent::MouseInput { .. } => {
                 self.mouse.handle_window_input(input)
             }
-            _ => {}
+            _ => None,
         }
     }
 }
 
 //
 
+#[derive(Debug, Clone, Copy)]
+pub enum Device {
+    Keyboard(DeviceId),
+    Mouse(DeviceId),
+
+    Mock(DeviceId),
+}
+
+//
+
 pub struct DeviceInputs {
-    keyboards: HashMap<DeviceId, KeyBoard>,
+    keyboards: HashMap<DeviceId, Keyboard>,
     primary_keyboard_id: Option<DeviceId>,
+
+    mocks: HashMap<DeviceId, MockDevice>,
 }
 
 impl DeviceInputs {
@@ -130,10 +148,12 @@ impl DeviceInputs {
         Self {
             keyboards: HashMap::new(),
             primary_keyboard_id: None,
+
+            mocks: HashMap::new(),
         }
     }
 
-    pub fn keyboard(&self, device_id: Option<DeviceId>) -> Option<&KeyBoard> {
+    pub fn keyboard(&self, device_id: Option<DeviceId>) -> Option<&Keyboard> {
         match device_id {
             Some(device_id) => self.keyboards.get(&device_id),
             _ => match self.primary_keyboard_id {
@@ -162,7 +182,7 @@ impl DeviceInputs {
             DeviceEvent::Key(input) => match self.keyboards.get_mut(&device_id) {
                 Some(keyboard) => keyboard.handle_input(input),
                 _ => {
-                    let mut keyboard = KeyBoard::new();
+                    let mut keyboard = Keyboard::new();
                     keyboard.handle_input(input);
                     if let None = self.primary_keyboard_id {
                         self.primary_keyboard_id = Some(device_id);

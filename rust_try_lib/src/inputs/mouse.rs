@@ -1,4 +1,4 @@
-use super::buttons::*;
+use super::{buttons::*, inputs::Device};
 
 use cgmath::*;
 
@@ -63,22 +63,34 @@ impl Mouse {
 
 impl Mouse {
     pub(crate) fn pre_update(&mut self) {
-        self.motion = Vector2::zero();
+        self.motion.set_zero();
         self.wheel = 0.0;
 
         self.buttons.pre_update();
     }
 
-    pub(crate) fn handle_window_input(&mut self, input: WindowEvent) {
+    pub(crate) fn handle_window_input(&mut self, input: WindowEvent) -> Option<Device> {
         match input {
-            WindowEvent::MouseWheel { delta, .. } => match delta {
-                MouseScrollDelta::LineDelta(_, y) => self.wheel = y,
-                MouseScrollDelta::PixelDelta(pixels) => self.wheel = pixels.y as f32,
-            },
-            WindowEvent::MouseInput { state, button, .. } => self
-                .buttons
-                .handle_input(Into::<MouseButton>::into(button), state),
-            _ => {}
+            WindowEvent::MouseWheel {
+                device_id, delta, ..
+            } => {
+                match delta {
+                    MouseScrollDelta::LineDelta(_, y) => self.wheel = y,
+                    MouseScrollDelta::PixelDelta(pixels) => self.wheel = pixels.y as f32,
+                }
+                Some(Device::Mouse(device_id))
+            }
+            WindowEvent::MouseInput {
+                device_id,
+                state,
+                button,
+                ..
+            } => {
+                self.buttons
+                    .handle_input(Into::<MouseButton>::into(button), state);
+                Some(Device::Mouse(device_id))
+            }
+            _ => None,
         }
     }
 }

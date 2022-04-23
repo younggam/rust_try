@@ -174,11 +174,11 @@ impl From<KeyCode> for usize {
     }
 }
 
-pub struct KeyBoard {
+pub struct Keyboard {
     buttons: Buttons,
 }
 
-impl KeyBoard {
+impl Keyboard {
     pub fn new() -> Self {
         Self {
             buttons: Buttons::new(163),
@@ -186,7 +186,7 @@ impl KeyBoard {
     }
 }
 
-impl KeyBoard {
+impl Keyboard {
     pub(crate) fn pre_update(&mut self) {
         self.buttons.pre_update();
     }
@@ -199,7 +199,7 @@ impl KeyBoard {
     }
 }
 
-impl std::ops::Deref for KeyBoard {
+impl std::ops::Deref for Keyboard {
     type Target = Buttons;
 
     fn deref(&self) -> &Self::Target {
