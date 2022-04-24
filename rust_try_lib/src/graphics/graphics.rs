@@ -17,12 +17,12 @@ pub struct GraphicsConfig {
 
 ///title should be integrated to graphics config later.
 pub struct Graphics {
-    config: GraphicsConfig,
-
     window_surfaces: HashMap<WindowId, WindowSurface>,
     primary_window_id: Option<WindowId>,
 
     core: Arc<GraphicsCore>,
+
+    config: GraphicsConfig,
 }
 
 pub struct GraphicsCore {
@@ -280,15 +280,15 @@ impl Graphics {
 }
 
 pub struct WindowSurface {
-    window: Window,
+    depth_texture: Texture,
+
+    surface_texture_view: Option<wgpu::TextureView>,
+    surface_texture: Option<wgpu::SurfaceTexture>,
 
     surface: wgpu::Surface,
     surface_config: wgpu::SurfaceConfiguration,
 
-    surface_texture: Option<wgpu::SurfaceTexture>,
-    surface_texture_view: Option<wgpu::TextureView>,
-
-    depth_texture: Texture,
+    window: Window,
 }
 
 impl Deref for WindowSurface {
@@ -298,13 +298,6 @@ impl Deref for WindowSurface {
         &self.window
     }
 }
-
-pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::from_cols(
-    vec4(1.0, 0.0, 0.0, 0.0),
-    vec4(0.0, 1.0, 0.0, 0.0),
-    vec4(0.0, 0.0, 0.5, 0.0),
-    vec4(0.0, 0.0, 0.5, 1.0),
-);
 
 // pub struct RenderPassColorAttachment {
 //     ops: wgpu::Operations<wgpu::Color>,
@@ -329,7 +322,6 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::from_cols(
 
 ///window, surface 정보, render_pipeline 별 batch.
 pub struct Renderer {
-    graphics_core: Arc<GraphicsCore>,
     // render_pass_descriptor: RenderPassDescriptor,
     render_pipeline: wgpu::RenderPipeline,
 
@@ -337,6 +329,8 @@ pub struct Renderer {
 
     view_projection_buffer: wgpu::Buffer,
     view_projection_bind_group: wgpu::BindGroup,
+
+    graphics_core: Arc<GraphicsCore>,
 }
 
 impl Renderer {
@@ -496,9 +490,7 @@ impl Renderer {
         self.graphics_core.queue.write_buffer(
             &self.view_projection_buffer,
             0,
-            bytemuck::cast_slice(AsRef::<[[f32; 4]; 4]>::as_ref(
-                &(OPENGL_TO_WGPU_MATRIX * view_proj_matrix),
-            )),
+            bytemuck::cast_slice(AsRef::<[[f32; 4]; 4]>::as_ref(&view_proj_matrix)),
         );
 
         let mut encoder =

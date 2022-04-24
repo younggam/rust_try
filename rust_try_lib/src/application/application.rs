@@ -16,18 +16,18 @@ use winit::{event::*, event_loop::*, window::WindowId};
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 
 pub struct Application {
-    _title: &'static str,
+    //common implementation
+    scene: Option<Box<dyn Scene>>,
+
+    utils: Utils,
+    inputs: Inputs,
+    graphics: Graphics,
 
     event_loop: Cell<Option<EventLoop<()>>>,
 
     frame_per_sec: f64,
 
-    graphics: Graphics,
-    utils: Utils,
-    inputs: Inputs,
-
-    //common implementation
-    scene: Option<Box<dyn Scene>>,
+    _title: &'static str,
 }
 
 impl Application {

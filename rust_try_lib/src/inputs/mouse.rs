@@ -36,6 +36,7 @@ impl From<WinitMouseButton> for MouseButton {
 }
 
 pub struct Mouse {
+    first_motion: Option<Vector2<f32>>,
     motion: Vector2<f32>,
     last_motion: Vector2<f32>,
     wheel: f32,
@@ -46,12 +47,17 @@ pub struct Mouse {
 impl Mouse {
     pub fn new() -> Self {
         Self {
+            first_motion: None,
             motion: Vector2::zero(),
             last_motion: Vector2::zero(),
             wheel: 0.0,
 
             buttons: Buttons::new(3),
         }
+    }
+
+    pub fn first_motion(&self) -> Vector2<f32> {
+        self.first_motion.unwrap_or(Vector2::zero())
     }
 
     pub fn motion(&self) -> Vector2<f32> {
@@ -69,6 +75,7 @@ impl Mouse {
 
 impl Mouse {
     pub(crate) fn pre_update(&mut self) {
+        self.first_motion = None;
         self.motion.set_zero();
         self.last_motion.set_zero();
         self.wheel = 0.0;
@@ -107,10 +114,12 @@ impl Mouse {
     pub(crate) fn handle_device_input(&mut self, input: DeviceEvent) {
         match input {
             DeviceEvent::MouseMotion { delta } => {
-                self.motion.x += delta.0 as f32;
-                self.motion.y += -delta.1 as f32;
-                self.last_motion.x = delta.0 as f32;
-                self.last_motion.y = -delta.1 as f32;
+                let delta = vec2(delta.0 as f32, -delta.1 as f32);
+                if let None = self.first_motion {
+                    self.first_motion = Some(delta);
+                }
+                self.motion += delta;
+                self.last_motion = delta;
             }
             DeviceEvent::MouseWheel { delta } => match delta {
                 MouseScrollDelta::LineDelta(_, y) => self.wheel += y,
@@ -134,10 +143,19 @@ impl std::ops::Deref for Mouse {
 
 impl From<MockDevice> for Mouse {
     fn from(mut mock: MockDevice) -> Self {
+        mock.first_motion.resize(2, None);
         mock.motion.resize(2, 0.0);
         mock.last_motion.resize(2, 0.0);
         mock.buttons.resize(163);
         Self {
+            first_motion: if mock.first_motion.iter().all(|val| val.is_none()) {
+                None
+            } else {
+                Some(vec2(
+                    mock.first_motion[0].unwrap_or(0.0),
+                    mock.first_motion[1].unwrap_or(0.0),
+                ))
+            },
             motion: vec2(mock.motion[0], mock.motion[1]),
             last_motion: vec2(mock.last_motion[0], mock.last_motion[1]),
             wheel: 0.0,

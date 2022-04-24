@@ -13,29 +13,28 @@ use rust_try_lib::{
 
 pub struct InitialScene {
     renderer: Renderer,
-    camera: Camera,
-    projection: PerspectiveFov<f32>,
     target_window_id: WindowId,
+
+    camera: Camera,
 }
 
 impl InitialScene {
     pub fn new(app: &Application) -> Self {
-        let camera = Camera::new(point3(0.0, 0.0, 5.0), vec3(0.0, 0.0, -1.0), 1.0, Deg(0.1));
-
         let target_window_id = app.graphics().primary_window_id().unwrap();
 
-        let projection = PerspectiveFov {
-            fovy: Rad(std::f32::consts::FRAC_PI_4),
-            aspect: app.graphics().aspect(target_window_id),
-            near: 0.1,
-            far: 100.0,
-        };
+        let camera = Camera::new(
+            app.graphics().aspect(target_window_id),
+            point3(0.0, 0.0, 5.0),
+            vec3(0.0, 0.0, -1.0),
+            1.0,
+            Deg(0.1),
+        );
 
         Self {
             renderer: Renderer::new(&app.graphics(), target_window_id),
-            camera,
-            projection,
             target_window_id,
+
+            camera,
         }
     }
 }
@@ -82,15 +81,17 @@ impl InitialScene {
         };
 
         if let Some(cursor) = inputs.cursor(self.target_window_id) {
-            if cursor.is_entered() {
-                if let Some(mouse) = inputs.device_mouse(None) {
-                    let motion = if cursor.is_just_entered() {
-                        mouse.last_motion()
-                    } else {
-                        mouse.motion()
-                    };
-                    self.camera.rotate(motion.magnitude(), motion.x, motion.y);
-                }
+            if let Some(mouse) = inputs.device_mouse(None) {
+                let motion = if cursor.is_just_entered() {
+                    mouse.last_motion()
+                } else if cursor.is_entered() {
+                    mouse.motion()
+                } else if cursor.is_just_left() {
+                    mouse.first_motion()
+                } else {
+                    Vector2::zero()
+                };
+                self.camera.rotate(motion.magnitude(), motion.x, motion.y);
             }
         }
     }
@@ -101,8 +102,7 @@ impl Scene for InitialScene {
 
     fn resize(&mut self, window_id: WindowId, new_size: winit::dpi::PhysicalSize<u32>) {
         if window_id == self.target_window_id {
-            let float_new_size = new_size.cast::<f32>();
-            self.projection.aspect = float_new_size.width / float_new_size.height;
+            self.camera.resize(new_size);
         }
     }
 
@@ -146,7 +146,7 @@ impl Scene for InitialScene {
         let _ = self.renderer.render(
             &graphics,
             self.target_window_id,
-            Matrix4::<f32>::from(self.projection) * self.camera.view_matrix(),
+            self.camera.view_proj_matrix(),
         );
     }
 

@@ -184,7 +184,9 @@ impl DeviceInputs {
             },
         }
     }
+}
 
+impl DeviceInputs {
     fn remove_device(&mut self, device_id: DeviceId) {
         if let Some(_) = self.mocks.remove(&device_id) {
         } else if let Some(_) = self.keyboards.remove(&device_id) {
@@ -193,9 +195,7 @@ impl DeviceInputs {
             self.primary_mouse_id = self.mouses.keys().next().copied();
         }
     }
-}
 
-impl DeviceInputs {
     pub(crate) fn pre_update(&mut self) {
         for mock in self.mocks.values_mut() {
             mock.pre_update();

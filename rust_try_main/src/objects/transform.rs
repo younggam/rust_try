@@ -35,6 +35,7 @@ impl Transform {
 
     pub fn rotate(&mut self, rotation: Quaternion<f32>) {
         self.rotation = rotation * self.rotation;
+        println!("{:?}", self.rotation);
     }
 
     pub fn scale_adjust(&mut self, scale: Vector3<f32>) {
