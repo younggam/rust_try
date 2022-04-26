@@ -101,32 +101,29 @@ impl Camera {
             .r#move(self.speed * delta * direction.normalize());
     }
 
-    pub fn rotate(&mut self, delta: f32, to_right: f32, to_up: f32) {
+    pub fn rotate(&mut self, to_right: f32, to_up: f32) {
         if to_up.abs() <= f32::EPSILON && to_right.abs() <= f32::EPSILON {
             return;
         }
 
-        let dest = vec3(0.0, to_up, to_right).normalize();
-        let axis = self.rotation().rotate_vector(Self::FRONT.cross(dest));
+        let dest = vec3(0.0, to_up, to_right);
+        let magnitude = dest.magnitude();
+        let axis = self
+            .rotation()
+            .rotate_vector(Self::FRONT.cross(dest.normalize()));
 
-        let rotation = Quaternion::from_axis_angle(axis, self.rotate_speed * delta);
+        let rotation = Quaternion::from_axis_angle(axis, self.rotate_speed * magnitude);
 
         self.transform.rotate(rotation);
     }
 
-    pub fn rotate2(&mut self, delta: f32, to_right: f32, to_up: f32) {
+    pub fn rotate2(&mut self, to_right: f32, to_up: f32) {
         if to_up.abs() <= f32::EPSILON && to_right.abs() <= f32::EPSILON {
             return;
         }
 
-        let dest = vec3(0.0, to_up, to_right).normalize();
-        let axis = self.rotation().rotate_vector(Self::FRONT.cross(dest));
-
-        let rotation =
-            Quaternion::from_axis_angle(axis, self.rotate_speed * delta) * self.rotation();
-
-        let new_front = rotation.rotate_vector(Self::FRONT);
-
-        self.transform.rotation = Quaternion::from_arc(Self::Front, new_front, None);
+        let to = vec2(to_up, to_right);
+        let mag = to.magnitude();
+        let to = to.normalize();
     }
 }

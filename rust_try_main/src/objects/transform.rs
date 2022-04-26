@@ -31,12 +31,12 @@ impl Transform {
         self.position = new_pos;
     }
 
-    pub fn set_rotation(&mut self, new_pos: Point3<f32>) {
-        self.position = new_pos;
+    pub fn set_rotation(&mut self, new_rot: Quaternion<f32>) {
+        self.rotation = new_rot;
     }
 
-    pub fn set_scale(&mut self, new_pos: Point3<f32>) {
-        self.position = new_pos;
+    pub fn set_scale(&mut self, new_scale: Vector3<f32>) {
+        self.scale = new_scale;
     }
 }
 
