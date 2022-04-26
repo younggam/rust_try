@@ -91,7 +91,7 @@ impl InitialScene {
                 } else {
                     Vector2::zero()
                 };
-                self.camera.rotate(motion.magnitude(), motion.x, motion.y);
+                self.camera.rotate2(motion.magnitude(), motion.x, motion.y);
             }
         }
     }

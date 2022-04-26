@@ -14,13 +14,6 @@ impl Camera {
     const FRONT: Vector3<f32> = vec3(1.0, 0.0, 0.0);
     const RIGHT: Vector3<f32> = vec3(0.0, 0.0, 1.0);
 
-    const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::from_cols(
-        vec4(1.0, 0.0, 0.0, 0.0),
-        vec4(0.0, 1.0, 0.0, 0.0),
-        vec4(0.0, 0.0, 0.5, 0.0),
-        vec4(0.0, 0.0, 0.5, 1.0),
-    );
-
     pub fn new(
         aspect: f32,
         position: Point3<f32>,
@@ -113,12 +106,27 @@ impl Camera {
             return;
         }
 
-        let front = self.rotation().rotate_vector(Self::FRONT);
-        let dest = self.rotation().rotate_vector(vec3(0.0, to_up, to_right));
+        let dest = vec3(0.0, to_up, to_right).normalize();
+        let axis = self.rotation().rotate_vector(Self::FRONT.cross(dest));
 
-        let axis = front.cross(dest.normalize());
         let rotation = Quaternion::from_axis_angle(axis, self.rotate_speed * delta);
 
         self.transform.rotate(rotation);
+    }
+
+    pub fn rotate2(&mut self, delta: f32, to_right: f32, to_up: f32) {
+        if to_up.abs() <= f32::EPSILON && to_right.abs() <= f32::EPSILON {
+            return;
+        }
+
+        let dest = vec3(0.0, to_up, to_right).normalize();
+        let axis = self.rotation().rotate_vector(Self::FRONT.cross(dest));
+
+        let rotation =
+            Quaternion::from_axis_angle(axis, self.rotate_speed * delta) * self.rotation();
+
+        let new_front = rotation.rotate_vector(Self::FRONT);
+
+        self.transform.rotation = Quaternion::from_arc(Self::Front, new_front, None);
     }
 }
