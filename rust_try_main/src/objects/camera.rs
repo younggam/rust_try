@@ -125,5 +125,13 @@ impl Camera {
         let to = vec2(to_up, to_right);
         let mag = to.magnitude();
         let to = to.normalize();
+
+        let z_axis = self.rotation().rotate_vector(Self::RIGHT);
+        let y_axis = self.rotation().rotate_vector(Vector3::unit_y());
+
+        let z_rot = Quaternion::from_axis_angle(z_axis, self.rotate_speed * mag * to.x);
+        let y_rot = Quaternion::from_axis_angle(y_axis, -self.rotate_speed * mag * to.y);
+
+        self.transform.rotate(y_rot * z_rot);
     }
 }
