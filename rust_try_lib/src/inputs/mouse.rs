@@ -114,7 +114,7 @@ impl Mouse {
     pub(crate) fn handle_device_input(&mut self, input: DeviceEvent) {
         match input {
             DeviceEvent::MouseMotion { delta } => {
-                let delta = vec2(delta.0 as f32, -delta.1 as f32);
+                let delta = vec2(delta.0 as f32, delta.1 as f32);
                 if let None = self.first_motion {
                     self.first_motion = Some(delta);
                 }

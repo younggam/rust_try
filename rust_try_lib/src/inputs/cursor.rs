@@ -49,7 +49,7 @@ impl Cursor {
                 ..
             } => {
                 self.position.x = position.x as f32;
-                self.position.y = -position.y as f32;
+                self.position.y = position.y as f32;
                 Some((device_id, DeviceType::Mouse))
             }
             WindowEvent::CursorEntered { device_id } => {

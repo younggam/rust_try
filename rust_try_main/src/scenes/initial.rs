@@ -41,59 +41,7 @@ impl InitialScene {
 
 impl InitialScene {
     fn handle_input(&mut self, utils: &Utils, inputs: &Inputs) {
-        if let Some(keyboard) = inputs.window_keyboard(self.target_window_id) {
-            let forward = if keyboard.is_pressed(KeyCode::W) {
-                1f32
-            } else {
-                0f32
-            };
-            let backward = if keyboard.is_pressed(KeyCode::S) {
-                1f32
-            } else {
-                0f32
-            };
-            let right = if keyboard.is_pressed(KeyCode::D) {
-                1f32
-            } else {
-                0f32
-            };
-            let left = if keyboard.is_pressed(KeyCode::A) {
-                1f32
-            } else {
-                0f32
-            };
-            let up = if keyboard.is_pressed(KeyCode::Space) {
-                1f32
-            } else {
-                0f32
-            };
-            let down = if keyboard.is_pressed(KeyCode::LShift) {
-                1f32
-            } else {
-                0f32
-            };
-            self.camera.r#move(
-                utils.time_delta() as f32,
-                forward - backward,
-                right - left,
-                up - down,
-            );
-        };
-
-        if let Some(cursor) = inputs.cursor(self.target_window_id) {
-            if let Some(mouse) = inputs.device_mouse(None) {
-                let motion = if cursor.is_just_entered() {
-                    mouse.last_motion()
-                } else if cursor.is_entered() {
-                    mouse.motion()
-                } else if cursor.is_just_left() {
-                    mouse.first_motion()
-                } else {
-                    Vector2::zero()
-                };
-                self.camera.rotate(motion.x, motion.y);
-            }
-        }
+        self.camera.handle_input(utils, inputs);
     }
 }
 
