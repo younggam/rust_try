@@ -5,13 +5,14 @@ use rust_try_lib::{cgmath::*, inputs::*, utils::Utils, winit, winit::window::Win
 pub struct Camera {
     projection: PerspectiveFov<f32>,
 
+    front: Vector3<f32>,
     transform: Transform<EulerLike<Rad<f32>>>,
     speed: f32,
     rotate_speed: Rad<f32>,
 }
 
 impl Camera {
-    const FRONT: Vector3<f32> = vec3(0.0, 0.0, -1.0);
+    // const FRONT: Vector3<f32> = vec3(0.0, 0.0, -1.0);
 
     pub fn new(
         aspect: f32,
@@ -28,6 +29,7 @@ impl Camera {
                 far: 100.0,
             },
 
+            front,
             transform: Transform::new(
                 position,
                 EulerLike::new(Rad(0.0), Rad(0.0), Rad(0.0)),
@@ -123,8 +125,13 @@ impl Camera {
     }
 
     pub fn view_matrix(&self) -> Matrix4<f32> {
-        let front = self.rotation().rotate_vector(Self::FRONT);
-        let up = vec3(0.0, 1.0, 0.0);
+        let front = self.rotation().rotate_vector(self.front);
+        let up = vec3(
+            0.0,
+            if front.z <= 0.0 { 1.0 } else { -1.0 },
+            // 1.0,
+            0.0,
+        );
 
         Matrix4::look_to_rh(self.position(), front, up)
     }
@@ -144,7 +151,9 @@ impl Camera {
             return;
         }
 
-        let mut to = self.rotation().rotate_vector(vec3(dir.y, 0.0, -dir.x));
+        let mut to = self
+            .rotation()
+            .rotate_vector(dir.x * self.front + vec3(dir.y, 0.0, 0.0));
         to[2] += dir.z;
 
         self.transform.r#move(self.speed * delta * to.normalize());
@@ -159,8 +168,13 @@ impl Camera {
 
         let coeff = self.rotate_speed * dir.magnitude();
         let dir = dir.normalize();
+        let front = self.rotation().rotate_vector(self.front);
 
-        let rotation = EulerLike::new(coeff * dir.y, coeff * -dir.x, Rad(0.0));
+        let rotation = EulerLike::new(
+            coeff * dir.y,
+            coeff * if front.z <= 0.0 { -dir.x } else { dir.x },
+            Rad(0.0),
+        );
 
         self.transform.rotate(rotation);
     }
