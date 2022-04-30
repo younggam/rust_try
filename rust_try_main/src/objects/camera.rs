@@ -1,18 +1,17 @@
-use crate::objects::transform::Transform;
+use crate::objects::transform::{Transform, *};
 
-use rust_try_lib::{cgmath::*, winit};
+use rust_try_lib::{cgmath::*, inputs::*, utils::Utils, winit, winit::window::WindowId};
 
 pub struct Camera {
     projection: PerspectiveFov<f32>,
 
-    transform: Transform,
+    transform: Transform<EulerLike<Rad<f32>>>,
     speed: f32,
     rotate_speed: Rad<f32>,
 }
 
 impl Camera {
-    const FRONT: Vector3<f32> = vec3(1.0, 0.0, 0.0);
-    const LEFT: Vector3<f32> = vec3(0.0, 1.0, 0.0);
+    const FRONT: Vector3<f32> = vec3(0.0, 0.0, -1.0);
 
     pub fn new(
         aspect: f32,
@@ -31,7 +30,7 @@ impl Camera {
 
             transform: Transform::new(
                 position,
-                Quaternion::from_arc(Self::FRONT, front, None),
+                EulerLike::new(Rad(0.0), Rad(0.0), Rad(0.0)),
                 vec3(1.0, 1.0, 1.0),
             ),
             speed,
@@ -40,7 +39,7 @@ impl Camera {
     }
 
     pub fn screen_motion_to_camera_motion(screen_motion: Vector2<f32>) -> Vector3<f32> {
-        vec3(0.0, -screen_motion.x, -screen_motion.y)
+        vec3(screen_motion.x, -screen_motion.y, 0.0)
     }
 
     pub fn position(&self) -> Point3<f32> {
@@ -57,8 +56,8 @@ impl Camera {
 }
 
 impl Camera {
-    pub fn handle_input(&mut self, utils: &Utils, inputs: &Inputs) {
-        if let Some(keyboard) = inputs.window_keyboard(self.target_window_id) {
+    pub fn handle_input(&mut self, target_window_id: WindowId, utils: &Utils, inputs: &Inputs) {
+        if let Some(keyboard) = inputs.window_keyboard(target_window_id) {
             let forward = if keyboard.is_pressed(KeyCode::W) {
                 1f32
             } else {
@@ -91,13 +90,11 @@ impl Camera {
             };
             self.r#move(
                 utils.time_delta() as f32,
-                forward - backward,
-                right - left,
-                up - down,
+                vec3(forward - backward, right - left, up - down),
             );
         };
 
-        if let Some(cursor) = inputs.cursor(self.target_window_id) {
+        if let Some(cursor) = inputs.cursor(target_window_id) {
             if let Some(mouse) = inputs.device_mouse(None) {
                 let motion = if cursor.is_just_entered() {
                     mouse.last_motion()
@@ -108,7 +105,7 @@ impl Camera {
                 } else {
                     Vector2::zero()
                 };
-                self.rotate(motion.x, motion.y);
+                self.rotate(motion);
             }
         }
     }
@@ -126,17 +123,10 @@ impl Camera {
     }
 
     pub fn view_matrix(&self) -> Matrix4<f32> {
-        let pos = self.position();
-        let f = self.rotation().rotate_vector(Self::FRONT);
-        let l = self.rotation().rotate_vector(Self::LEFT);
-        let u = f.cross(l).normalize();
+        let front = self.rotation().rotate_vector(Self::FRONT);
+        let up = vec3(0.0, 1.0, 0.0);
 
-        Matrix4::from_cols(
-            vec4(l.x, u.x, -f.x, 0.0),
-            vec4(l.y, u.y, -f.y, 0.0),
-            vec4(l.z, u.z, -f.z, 0.0),
-            vec4(-pos.dot(l), -pos.dot(u), pos.dot(f), 1.0),
-        )
+        Matrix4::look_to_rh(self.position(), front, up)
     }
 
     pub fn view_proj_matrix(&self) -> Matrix4<f32> {
@@ -149,29 +139,28 @@ impl Camera {
     }
 
     pub fn r#move(&mut self, delta: f32, dir: Vector3<f32>) {
-        if dir.x.abs() <= f32::EPSILON && dir.y.abs() <= f32::EPSILON && dir.x.abs() <= f32::EPSILON
+        if dir.x.abs() <= f32::EPSILON && dir.y.abs() <= f32::EPSILON && dir.z.abs() <= f32::EPSILON
         {
             return;
         }
 
-        let mut dir = self.rotation().rotate_vector(vec3(dir.x, dir.y, 0.0));
-        dir[2] += to.z;
+        let mut to = self.rotation().rotate_vector(vec3(dir.y, 0.0, -dir.x));
+        to[2] += dir.z;
 
-        self.transform.r#move(self.speed * delta * dir.normalize());
+        self.transform.r#move(self.speed * delta * to.normalize());
     }
 
-    pub fn rotate(&mut self, to_left: f32, to_up: f32) {
-        if to_up.abs() <= f32::EPSILON && to_left.abs() <= f32::EPSILON {
+    pub fn rotate(&mut self, screen_motion: Vector2<f32>) {
+        let dir = Self::screen_motion_to_camera_motion(screen_motion);
+        if dir.x.abs() <= f32::EPSILON && dir.y.abs() <= f32::EPSILON && dir.z.abs() <= f32::EPSILON
+        {
             return;
         }
 
-        let dest = vec3(0.0, to_left, to_up);
-        let magnitude = dest.magnitude();
-        let axis = self
-            .rotation()
-            .rotate_vector(Self::FRONT.cross(dest.normalize()));
+        let coeff = self.rotate_speed * dir.magnitude();
+        let dir = dir.normalize();
 
-        let rotation = Quaternion::from_axis_angle(axis, self.rotate_speed * magnitude);
+        let rotation = EulerLike::new(coeff * dir.y, coeff * -dir.x, Rad(0.0));
 
         self.transform.rotate(rotation);
     }

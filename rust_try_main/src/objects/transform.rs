@@ -1,13 +1,15 @@
 use rust_try_lib::cgmath::*;
 
-pub struct Transform {
+use std::ops::AddAssign;
+
+pub struct Transform<T: Into<Quaternion<f32>> + Copy> {
     position: Point3<f32>,
-    rotation: Quaternion<f32>,
+    rotation: T,
     scale: Vector3<f32>,
 }
 
-impl Transform {
-    pub fn new(position: Point3<f32>, rotation: Quaternion<f32>, scale: Vector3<f32>) -> Self {
+impl<T: Into<Quaternion<f32>> + Copy> Transform<T> {
+    pub fn new(position: Point3<f32>, rotation: T, scale: Vector3<f32>) -> Self {
         Self {
             position,
             rotation,
@@ -20,66 +22,113 @@ impl Transform {
     }
 
     pub fn rotation(&self) -> Quaternion<f32> {
-        self.rotation
+        self.rotation.into()
     }
 
     pub fn scale(&self) -> Vector3<f32> {
         self.scale
     }
-
-    pub fn set_position(&mut self, new_pos: Point3<f32>) {
-        self.position = new_pos;
-    }
-
-    pub fn set_rotation(&mut self, new_rot: Quaternion<f32>) {
-        self.rotation = new_rot;
-    }
-
-    pub fn set_scale(&mut self, new_scale: Vector3<f32>) {
-        self.scale = new_scale;
-    }
 }
 
-impl Transform {
+impl<T: Into<Quaternion<f32>> + Copy> Transform<T> {
     pub fn r#move(&mut self, velocity: Vector3<f32>) {
         self.position += velocity;
     }
 
-    pub fn rotate(&mut self, rotation: Quaternion<f32>) {
-        self.rotation = rotation * self.rotation;
-    }
-
-    pub fn scale_adjust(&mut self, scale: Vector3<f32>) {
+    pub fn scaling(&mut self, scale: Vector3<f32>) {
         self.scale += scale;
     }
 }
 
-impl From<Point3<f32>> for Transform {
-    fn from(position: Point3<f32>) -> Self {
-        Self {
-            position,
-            rotation: Quaternion::one(),
-            scale: vec3(1.0, 1.0, 1.0),
-        }
+impl Transform<Quaternion<f32>> {
+    pub fn rotate(&mut self, rotation: Quaternion<f32>) {
+        self.rotation = rotation * self.rotation;
     }
 }
 
-impl From<Quaternion<f32>> for Transform {
-    fn from(rotation: Quaternion<f32>) -> Self {
-        Self {
-            position: point3(0.0, 0.0, 0.0),
-            rotation: rotation,
-            scale: vec3(1.0, 1.0, 1.0),
-        }
+impl Transform<EulerLike<Rad<f32>>> {
+    pub fn rotate(&mut self, rotation: EulerLike<Rad<f32>>) {
+        self.rotation += rotation;
     }
 }
 
-impl From<Vector3<f32>> for Transform {
-    fn from(scale: Vector3<f32>) -> Self {
-        Self {
-            position: point3(0.0, 0.0, 0.0),
-            rotation: Quaternion::one(),
-            scale,
+//
+
+#[derive(Clone, Copy)]
+pub struct EulerLike<A> {
+    x_angle: A,
+    y_angle: A,
+    z_angle: A,
+    cache: Quaternion<f32>,
+}
+
+impl<A: Into<Rad<f32>> + Copy> EulerLike<A> {
+    pub fn new(x_angle: A, y_angle: A, z_angle: A) -> Self {
+        let mut ret = Self {
+            x_angle,
+            y_angle,
+            z_angle,
+            cache: Quaternion::one(),
+        };
+        ret.update_cache();
+        ret
+    }
+
+    pub fn update_cache(&mut self) {
+        let y_rot = Quaternion::from_angle_y(self.y_angle.into());
+        let xy_rot = Quaternion::from_axis_angle(
+            y_rot.rotate_vector(Vector3::unit_x()),
+            self.x_angle.into(),
+        ) * y_rot;
+
+        self.cache = Quaternion::from_axis_angle(
+            xy_rot.rotate_vector(Vector3::unit_z()),
+            self.z_angle.into(),
+        ) * xy_rot;
+    }
+}
+
+impl AddAssign<EulerLike<Rad<f32>>> for EulerLike<Rad<f32>> {
+    fn add_assign(&mut self, other: Self) {
+        const LIMIT: Rad<f32> = Rad(std::f32::consts::FRAC_PI_2 - std::f32::consts::PI / 180.0);
+
+        self.x_angle += other.x_angle;
+        if self.x_angle > LIMIT {
+            self.x_angle = LIMIT;
         }
+        if self.x_angle < -LIMIT {
+            self.x_angle = -LIMIT;
+        }
+        self.y_angle += other.y_angle;
+        self.z_angle += other.z_angle;
+
+        self.update_cache();
+    }
+}
+
+impl AddAssign<EulerLike<Deg<f32>>> for EulerLike<Deg<f32>> {
+    fn add_assign(&mut self, other: Self) {
+        const LIMIT: Deg<f32> = Deg(89.0);
+
+        self.x_angle += other.x_angle;
+        if self.x_angle > LIMIT {
+            self.x_angle = LIMIT;
+        }
+        if self.x_angle < -LIMIT {
+            self.x_angle = -LIMIT;
+        }
+        self.y_angle += other.y_angle;
+        self.z_angle += other.z_angle;
+
+        self.update_cache();
+    }
+}
+
+impl<A> From<EulerLike<A>> for Quaternion<f32>
+where
+    A: Angle<Unitless = f32> + Into<Rad<f32>>,
+{
+    fn from(euler: EulerLike<A>) -> Self {
+        euler.cache
     }
 }

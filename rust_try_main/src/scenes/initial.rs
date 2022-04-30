@@ -41,7 +41,8 @@ impl InitialScene {
 
 impl InitialScene {
     fn handle_input(&mut self, utils: &Utils, inputs: &Inputs) {
-        self.camera.handle_input(utils, inputs);
+        self.camera
+            .handle_input(self.target_window_id, utils, inputs);
     }
 }
 
