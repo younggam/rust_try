@@ -32,8 +32,8 @@ pub mod graphics {
         leaf_mod! {pub texture}
         leaf_mod! {pub vertex}
     }
-
     leaf_mod! {pub graphics}
+    leaf_mod! {pub renderer}
 }
 
 pub mod inputs {

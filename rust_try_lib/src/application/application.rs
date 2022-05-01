@@ -110,7 +110,7 @@ impl Application {
                     Event::WindowEvent { window_id, event } => match event {
                         WindowEvent::CloseRequested => {
                             self.graphics.remove_window(window_id);
-                            if self.graphics.window_ids().count() == 0 {
+                            if self.graphics.window_ids().len() == 0 {
                                 Self::exit();
                             }
                         }
