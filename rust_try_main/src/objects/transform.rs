@@ -1,6 +1,6 @@
 use rust_try_lib::cgmath::*;
 
-use std::ops::AddAssign;
+use std::{f32::consts::*, ops::AddAssign};
 
 pub struct Transform<T: Into<Quaternion<f32>> + Copy> {
     position: Point3<f32>,
@@ -44,11 +44,19 @@ impl Transform<Quaternion<f32>> {
     pub fn rotate(&mut self, rotation: Quaternion<f32>) {
         self.rotation = rotation * self.rotation;
     }
+
+    pub fn euler(&self) -> EulerLike<Rad<f32>> {
+        self.rotation.into()
+    }
 }
 
 impl Transform<EulerLike<Rad<f32>>> {
     pub fn rotate(&mut self, rotation: EulerLike<Rad<f32>>) {
         self.rotation += rotation;
+    }
+
+    pub fn euler(&self) -> EulerLike<Rad<f32>> {
+        self.rotation
     }
 }
 
@@ -74,6 +82,18 @@ impl<A: Into<Rad<f32>> + Copy> EulerLike<A> {
         ret
     }
 
+    pub fn x_angle(&self) -> Rad<f32> {
+        self.x_angle.into()
+    }
+
+    pub fn y_angle(&self) -> Rad<f32> {
+        self.y_angle.into()
+    }
+
+    pub fn z_angle(&self) -> Rad<f32> {
+        self.z_angle.into()
+    }
+
     pub fn update_cache(&mut self) {
         let y_rot = Quaternion::from_angle_y(self.y_angle.into());
         let xy_rot = Quaternion::from_axis_angle(
@@ -90,7 +110,7 @@ impl<A: Into<Rad<f32>> + Copy> EulerLike<A> {
 
 impl AddAssign<EulerLike<Rad<f32>>> for EulerLike<Rad<f32>> {
     fn add_assign(&mut self, other: Self) {
-        const LIMIT: Rad<f32> = Rad(std::f32::consts::FRAC_PI_2 - std::f32::consts::PI / 180.0);
+        const LIMIT: Rad<f32> = Rad(FRAC_PI_2 - PI / 180.0);
 
         self.x_angle += other.x_angle;
         if self.x_angle > LIMIT {
@@ -130,5 +150,17 @@ where
 {
     fn from(euler: EulerLike<A>) -> Self {
         euler.cache
+    }
+}
+
+impl From<Euler<Rad<f32>>> for EulerLike<Rad<f32>> {
+    fn from(euler: Euler<Rad<f32>>) -> Self {
+        EulerLike::new(euler.x, euler.y, euler.z)
+    }
+}
+
+impl From<Quaternion<f32>> for EulerLike<Rad<f32>> {
+    fn from(quaternion: Quaternion<f32>) -> Self {
+        Into::<Euler<Rad<f32>>>::into(quaternion).into()
     }
 }

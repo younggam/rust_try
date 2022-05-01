@@ -25,7 +25,7 @@ impl InitialScene {
         let camera = Camera::new(
             app.graphics().aspect(target_window_id),
             point3(0.0, 0.0, 5.0),
-            vec3(0.0, 0.6, -0.8),
+            vec3(0.0, 0.0, -1.0),
             1.0,
             Deg(0.1),
         );

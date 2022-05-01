@@ -6,21 +6,22 @@ pub struct Camera {
     projection: PerspectiveFov<f32>,
 
     front: Vector3<f32>,
+    neck: Rad<f32>,
+
     transform: Transform<EulerLike<Rad<f32>>>,
     speed: f32,
     rotate_speed: Rad<f32>,
 }
 
 impl Camera {
-    // const FRONT: Vector3<f32> = vec3(0.0, 0.0, -1.0);
-
     pub fn new(
         aspect: f32,
         position: Point3<f32>,
-        front: Vector3<f32>,
+        mut front: Vector3<f32>,
         speed: f32,
         rotate_speed: impl Into<Rad<f32>>,
     ) -> Self {
+        front = front.normalize();
         Self {
             projection: PerspectiveFov {
                 fovy: Rad(std::f32::consts::FRAC_PI_4),
@@ -30,6 +31,8 @@ impl Camera {
             },
 
             front,
+            neck: Rad::atan2(front.y, front.z),
+
             transform: Transform::new(
                 position,
                 EulerLike::new(Rad(0.0), Rad(0.0), Rad(0.0)),
@@ -52,8 +55,22 @@ impl Camera {
         self.transform.rotation()
     }
 
+    pub fn euler(&self) -> EulerLike<Rad<f32>> {
+        self.transform.euler()
+    }
+
     pub fn scale(&self) -> Vector3<f32> {
         self.transform.scale()
+    }
+
+    pub fn is_neck_bent_back(&self) -> bool {
+        let x_angle = self.euler().x_angle();
+
+        if self.front.z <= 0.0 {
+            (self.neck - x_angle).0.abs() <= std::f32::consts::FRAC_PI_2
+        } else {
+            (self.neck - x_angle).0.abs() >= std::f32::consts::FRAC_PI_2
+        }
     }
 }
 
@@ -126,12 +143,7 @@ impl Camera {
 
     pub fn view_matrix(&self) -> Matrix4<f32> {
         let front = self.rotation().rotate_vector(self.front);
-        let up = vec3(
-            0.0,
-            if front.z <= 0.0 { 1.0 } else { -1.0 },
-            // 1.0,
-            0.0,
-        );
+        let up = vec3(0.0, if self.is_neck_bent_back() { -1.0 } else { 1.0 }, 0.0);
 
         Matrix4::look_to_rh(self.position(), front, up)
     }
@@ -151,10 +163,10 @@ impl Camera {
             return;
         }
 
-        let mut to = self
-            .rotation()
-            .rotate_vector(dir.x * self.front + vec3(dir.y, 0.0, 0.0));
-        to[2] += dir.z;
+        let mut to = dir.x * self.front;
+        to.x += if self.front.z <= 0.0 { dir.y } else { -dir.y };
+        to = self.rotation().rotate_vector(to);
+        to.z += dir.z;
 
         self.transform.r#move(self.speed * delta * to.normalize());
     }
@@ -168,11 +180,15 @@ impl Camera {
 
         let coeff = self.rotate_speed * dir.magnitude();
         let dir = dir.normalize();
-        let front = self.rotation().rotate_vector(self.front);
 
         let rotation = EulerLike::new(
-            coeff * dir.y,
-            coeff * if front.z <= 0.0 { -dir.x } else { dir.x },
+            coeff * if self.front.z <= 0.0 { dir.y } else { -dir.y },
+            coeff
+                * if self.is_neck_bent_back() {
+                    dir.x
+                } else {
+                    -dir.x
+                },
             Rad(0.0),
         );
 
