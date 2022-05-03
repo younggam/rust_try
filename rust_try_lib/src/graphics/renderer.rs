@@ -8,12 +8,28 @@ use wgpu::util::DeviceExt;
 
 use cgmath::*;
 
-pub struct BindGroupLayoutConfig {
-    label: &'static str,
+pub struct Uniform {}
+
+impl Uniform {
+    pub fn bind_group_layout_entry(binding: &mut u32) -> wgpu::BindGroupLayoutEntry {
+        let ret = wgpu::BindGroupLayoutEntry {
+            binding: *binding,
+            visibility: wgpu::ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: Some(unsafe { std::num::NonZeroU64::new_unchecked(64) }),
+            },
+            count: None,
+        };
+        *binding += 1;
+        ret
+    }
 }
 
-pub struct RendererConfig {
-    bind_group_layouts: Vec<BindGroupLayoutConfig>,
+pub struct BindGroup {
+    inner: wgpu::BindGroup,
+    buffers: Vec<wgpu::Buffer>,
 }
 
 ///window, surface 정보, render_pipeline 별 batch.
