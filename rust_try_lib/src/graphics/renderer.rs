@@ -8,16 +8,16 @@ use wgpu::util::DeviceExt;
 
 use cgmath::*;
 
-pub struct BindGroupConfig {
-    pub label: &'static str,
-    pub entries: Vec<BindGroupConfigEntry>,
-}
-
 pub struct BindGroupConfigEntry {
     pub binding: u32,
     pub visibility: wgpu::ShaderStages,
     pub ty: wgpu::BindingType,
     pub count: Option<NonZeroU32>,
+}
+
+pub struct BindGroupConfig {
+    pub label: &'static str,
+    pub entries: Vec<BindGroupConfigEntry>,
 }
 
 ///window, surface 정보, render_pipeline 별 batch.
@@ -43,7 +43,7 @@ impl Renderer {
                 .core
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some(bind_group_config.label),
+                    label: Some(&(bind_group_config.label.to_string() + " Bind Group Layout")),
                     entries: &bind_group_config
                         .entries
                         .iter()
@@ -136,7 +136,7 @@ impl Renderer {
                 .core
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("View Projection Buffer"),
+                    label: Some(&(bind_group_config.label.to_string() + " Buffer")),
                     contents: &[0; 4 * 16 * 1],
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 });
@@ -146,7 +146,7 @@ impl Renderer {
                 .core
                 .device
                 .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("View Projection Bind Group"),
+                    label: Some(&(bind_group_config.label.to_string() + " Bind Group")),
                     layout: &view_projection_bind_group_layout,
                     entries: &[wgpu::BindGroupEntry {
                         binding: 0,

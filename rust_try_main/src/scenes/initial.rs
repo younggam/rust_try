@@ -37,7 +37,7 @@ impl InitialScene {
                 &app.graphics(),
                 target_window_id,
                 BindGroupConfig {
-                    label: "View Projection Bind Group Layout",
+                    label: "View Projection",
                     entries: vec![BindGroupConfigEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStages::VERTEX,
