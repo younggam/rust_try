@@ -18,7 +18,10 @@ macro_rules! leaf_mod{
 // #[macro_use]
 // extern crate lazy_static;
 #[macro_use]
-extern crate wgpu;
+pub extern crate wgpu;
+
+pub use cgmath;
+pub use winit;
 
 pub mod application {
     leaf_mod! {pub application}
@@ -51,6 +54,3 @@ pub mod utils {
     leaf_mod! {pub utils}
     leaf_mod! {pub wrapper}
 }
-
-pub use cgmath;
-pub use winit;

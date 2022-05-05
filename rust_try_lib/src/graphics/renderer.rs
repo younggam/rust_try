@@ -1,6 +1,6 @@
 use super::{elements::*, graphics::*};
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, num::*, sync::Arc};
 
 use winit::window::WindowId;
 
@@ -8,28 +8,16 @@ use wgpu::util::DeviceExt;
 
 use cgmath::*;
 
-pub struct Uniform {}
-
-impl Uniform {
-    pub fn bind_group_layout_entry(binding: &mut u32) -> wgpu::BindGroupLayoutEntry {
-        let ret = wgpu::BindGroupLayoutEntry {
-            binding: *binding,
-            visibility: wgpu::ShaderStages::VERTEX,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: Some(unsafe { std::num::NonZeroU64::new_unchecked(64) }),
-            },
-            count: None,
-        };
-        *binding += 1;
-        ret
-    }
+pub struct BindGroupConfig {
+    pub label: &'static str,
+    pub entries: Vec<BindGroupConfigEntry>,
 }
 
-pub struct BindGroup {
-    inner: wgpu::BindGroup,
-    buffers: Vec<wgpu::Buffer>,
+pub struct BindGroupConfigEntry {
+    pub binding: u32,
+    pub visibility: wgpu::ShaderStages,
+    pub ty: wgpu::BindingType,
+    pub count: Option<NonZeroU32>,
 }
 
 ///window, surface 정보, render_pipeline 별 batch.
@@ -45,25 +33,27 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(graphics: &Graphics, target_window_id: WindowId) -> Self {
+    pub fn new(
+        graphics: &Graphics,
+        target_window_id: WindowId,
+        bind_group_config: BindGroupConfig,
+    ) -> Self {
         let view_projection_bind_group_layout =
             graphics
                 .core
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("View Projection Bind Group Layout"),
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: Some(unsafe {
-                                std::num::NonZeroU64::new_unchecked(64)
-                            }),
-                        },
-                        count: None,
-                    }],
+                    label: Some(bind_group_config.label),
+                    entries: &bind_group_config
+                        .entries
+                        .iter()
+                        .map(|entry| wgpu::BindGroupLayoutEntry {
+                            binding: entry.binding,
+                            visibility: entry.visibility,
+                            ty: entry.ty,
+                            count: entry.count,
+                        })
+                        .collect::<Vec<wgpu::BindGroupLayoutEntry>>(),
                 });
 
         let render_pipeline_layout =
@@ -81,7 +71,6 @@ impl Renderer {
             .device
             .create_shader_module(&include_wgsl!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                // "/../assets/shaders/shader.wgsl"
                 "/../assets/shaders/view_projection.wgsl"
             )));
 
@@ -167,7 +156,6 @@ impl Renderer {
 
         Self {
             graphics_core: graphics.core.clone(),
-            // render_pass_descriptor,
             render_pipeline,
 
             batch: Batch::new(&graphics.core),

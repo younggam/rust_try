@@ -4,12 +4,14 @@ use rust_try_lib::{
     application::{Application, Scene},
     cgmath::*,
     graphics::elements::*,
-    graphics::{Graphics, Renderer},
+    graphics::*,
     inputs::*,
     utils::Utils,
-    winit,
+    wgpu, winit,
     winit::window::WindowId,
 };
+
+use std::num::NonZeroU64;
 
 pub struct InitialScene {
     renderer: Renderer,
@@ -31,7 +33,23 @@ impl InitialScene {
         );
 
         Self {
-            renderer: Renderer::new(&app.graphics(), target_window_id),
+            renderer: Renderer::new(
+                &app.graphics(),
+                target_window_id,
+                BindGroupConfig {
+                    label: "View Projection Bind Group Layout",
+                    entries: vec![BindGroupConfigEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(64) }),
+                        },
+                        count: None,
+                    }],
+                },
+            ),
             target_window_id,
 
             camera,
