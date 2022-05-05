@@ -8,6 +8,18 @@ use wgpu::util::DeviceExt;
 
 use cgmath::*;
 
+pub enum BindingResource {
+    Uniform {
+        buffer: wgpu::Buffer,
+        size: wgpu::BufferAddress,
+    },
+    Texture {
+        texture: wgpu::Texture,
+        view_desc: wgpu::TextureViewDescripter<'static>,
+    },
+    Sampler(wgpu::Sampler),
+}
+
 pub struct BindGroupConfigEntry {
     pub binding: u32,
     pub visibility: wgpu::ShaderStages,
