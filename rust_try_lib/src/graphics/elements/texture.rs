@@ -48,3 +48,14 @@ impl Texture {
         }
     }
 }
+
+pub struct TextureConfig {
+    
+}
+
+pub struct Texture2 {
+    inner: wgpu::Texture,
+    config: TextureConfig,
+}
+
+impl Texture2 {}

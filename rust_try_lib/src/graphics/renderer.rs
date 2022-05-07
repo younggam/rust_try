@@ -8,6 +8,13 @@ use wgpu::util::DeviceExt;
 
 use cgmath::*;
 
+// pub trait BindGroupEntry{}
+//
+// pub struct BindGroup {
+//     pub name: &'static str,
+//     pub entries: Vec<Box<BindGroupEntry>>,
+// }
+
 pub enum BindingResource {
     Uniform {
         buffer: wgpu::Buffer,
@@ -15,7 +22,7 @@ pub enum BindingResource {
     },
     Texture {
         texture: wgpu::Texture,
-        view_desc: wgpu::TextureViewDescripter<'static>,
+        view_desc: wgpu::TextureViewDescriptor<'static>,
     },
     Sampler(wgpu::Sampler),
 }
@@ -28,7 +35,7 @@ pub struct BindGroupConfigEntry {
 }
 
 pub struct BindGroupConfig {
-    pub label: &'static str,
+    pub name: &'static str,
     pub entries: Vec<BindGroupConfigEntry>,
 }
 
@@ -55,7 +62,7 @@ impl Renderer {
                 .core
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some(&(bind_group_config.label.to_string() + " Bind Group Layout")),
+                    label: Some(&(bind_group_config.name.to_string() + " Bind Group Layout")),
                     entries: &bind_group_config
                         .entries
                         .iter()
@@ -148,7 +155,7 @@ impl Renderer {
                 .core
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(&(bind_group_config.label.to_string() + " Buffer")),
+                    label: Some(&(bind_group_config.name.to_string() + " Buffer")),
                     contents: &[0; 4 * 16 * 1],
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 });
@@ -158,7 +165,7 @@ impl Renderer {
                 .core
                 .device
                 .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some(&(bind_group_config.label.to_string() + " Bind Group")),
+                    label: Some(&(bind_group_config.name.to_string() + " Bind Group")),
                     layout: &view_projection_bind_group_layout,
                     entries: &[wgpu::BindGroupEntry {
                         binding: 0,
