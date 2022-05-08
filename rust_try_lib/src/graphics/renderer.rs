@@ -28,6 +28,7 @@ pub enum BindingResource {
 }
 
 pub struct BindGroupConfigEntry {
+    pub name: &'static str,
     pub binding: u32,
     pub visibility: wgpu::ShaderStages,
     pub ty: wgpu::BindingType,
@@ -45,8 +46,8 @@ pub struct Renderer {
 
     batch: Batch,
 
-    view_projection_buffer: wgpu::Buffer,
-    view_projection_bind_group: wgpu::BindGroup,
+    bind_buffers: Vec<Vec<wgpu::Buffer>>,
+    bind_groups: Vec<wgpu::BindGroup>,
 
     graphics_core: Arc<GraphicsCore>,
 }
@@ -55,25 +56,29 @@ impl Renderer {
     pub fn new(
         graphics: &Graphics,
         target_window_id: WindowId,
-        bind_group_config: BindGroupConfig,
+        bind_group_configs: &[BindGroupConfig],
     ) -> Self {
-        let view_projection_bind_group_layout =
-            graphics
-                .core
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some(&(bind_group_config.name.to_string() + " Bind Group Layout")),
-                    entries: &bind_group_config
-                        .entries
-                        .iter()
-                        .map(|entry| wgpu::BindGroupLayoutEntry {
-                            binding: entry.binding,
-                            visibility: entry.visibility,
-                            ty: entry.ty,
-                            count: entry.count,
-                        })
-                        .collect::<Vec<wgpu::BindGroupLayoutEntry>>(),
-                });
+        let bind_group_layouts = bind_group_configs
+            .iter()
+            .map(|bind_group_config| {
+                graphics
+                    .core
+                    .device
+                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                        label: Some(&(bind_group_config.name.to_string() + " Bind Group Layout")),
+                        entries: &bind_group_config
+                            .entries
+                            .iter()
+                            .map(|entry| wgpu::BindGroupLayoutEntry {
+                                binding: entry.binding,
+                                visibility: entry.visibility,
+                                ty: entry.ty,
+                                count: entry.count,
+                            })
+                            .collect::<Vec<wgpu::BindGroupLayoutEntry>>(),
+                    })
+            })
+            .collect::<Vec<_>>();
 
         let render_pipeline_layout =
             graphics
@@ -81,7 +86,7 @@ impl Renderer {
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[&view_projection_bind_group_layout],
+                    bind_group_layouts: &bind_group_layouts.iter().collect::<Vec<_>>(),
                     push_constant_ranges: &[],
                 });
 
@@ -126,11 +131,8 @@ impl Renderer {
                         strip_index_format: None,
                         front_face: wgpu::FrontFace::Ccw,
                         cull_mode: Some(wgpu::Face::Back),
-                        // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
                         polygon_mode: wgpu::PolygonMode::Fill,
-                        // Requires Features::DEPTH_CLIP_CONTROL
                         unclipped_depth: false,
-                        // Requires Features::CONSERVATIVE_RASTERIZATION
                         conservative: false,
                     },
                     depth_stencil: Some(wgpu::DepthStencilState {
@@ -145,33 +147,50 @@ impl Renderer {
                         mask: !0,
                         alpha_to_coverage_enabled: false,
                     },
-                    // If the pipeline will be used with a multiview render pass, this
-                    // indicates how many array layers the attachments will have.
                     multiview: None,
                 });
 
-        let view_projection_buffer =
-            graphics
-                .core
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(&(bind_group_config.name.to_string() + " Buffer")),
-                    contents: &[0; 4 * 16 * 1],
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                });
-
-        let view_projection_bind_group =
-            graphics
-                .core
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some(&(bind_group_config.name.to_string() + " Bind Group")),
-                    layout: &view_projection_bind_group_layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: view_projection_buffer.as_entire_binding(),
-                    }],
-                });
+        let bind_buffers = bind_group_configs
+            .iter()
+            .map(|bind_group_config| {
+                bind_group_config
+                    .entries
+                    .iter()
+                    .map(|entry| {
+                        graphics
+                            .core
+                            .device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some(&(entry.name.to_string() + " Buffer")),
+                                contents: &[0; 4 * 16 * 1],
+                                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                            })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+            
+        let bind_groups = bind_group_configs
+            .iter()
+            .enumerate()
+            .map(|(i, bind_group_config)| {
+                graphics
+                    .core
+                    .device
+                    .create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some(&(bind_group_config.name.to_string() + " Bind Group")),
+                        layout: &bind_group_layouts[i],
+                        entries: &bind_buffers[i]
+                            .iter()
+                            .enumerate()
+                            .map(|(j, buffer)| wgpu::BindGroupEntry {
+                                binding: bind_group_config.entries[j].binding,
+                                resource: buffer.as_entire_binding(),
+                            })
+                            .collect::<Vec<_>>(),
+                    })
+            })
+            .collect::<Vec<_>>();
 
         Self {
             graphics_core: graphics.core.clone(),
@@ -179,8 +198,8 @@ impl Renderer {
 
             batch: Batch::new(&graphics.core),
 
-            view_projection_buffer,
-            view_projection_bind_group,
+            bind_buffers,
+            bind_groups,
         }
     }
 }
@@ -190,7 +209,7 @@ impl Renderer {
         &mut self,
         graphics: &Graphics,
         target_window_id: WindowId,
-        view_proj_matrix: Matrix4<f32>,
+        bind_resources: &[&[Option<Matrix4<f32>>]],
     ) -> Result<(), ()> {
         let window_surface = match graphics.window_surface(target_window_id) {
             Some(window_surface) => window_surface,
@@ -205,11 +224,17 @@ impl Renderer {
             },
         };
 
-        self.graphics_core.queue.write_buffer(
-            &self.view_projection_buffer,
-            0,
-            bytemuck::cast_slice(AsRef::<[[f32; 4]; 4]>::as_ref(&view_proj_matrix)),
-        );
+        for (i, bind_resources) in bind_resources.iter().enumerate() {
+            for (j, bind_resource) in bind_resources.iter().enumerate() {
+                if let Some(bind_resource) = bind_resource {
+                    self.graphics_core.queue.write_buffer(
+                        &self.bind_buffers[i][j],
+                        0,
+                        bytemuck::cast_slice(AsRef::<[[f32; 4]; 4]>::as_ref(bind_resource)),
+                    );
+                }
+            }
+        }
 
         let mut encoder =
             self.graphics_core
@@ -245,7 +270,9 @@ impl Renderer {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.view_projection_bind_group, &[]);
+            for (i, bind_group) in self.bind_groups.iter().enumerate() {
+                render_pass.set_bind_group(i as u32, bind_group, &[]);
+            }
 
             let mut instance_start = 0u64;
             for mesh_id in self.batch.to_draw.drain(..) {

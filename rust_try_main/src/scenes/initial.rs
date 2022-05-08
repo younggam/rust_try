@@ -14,6 +14,7 @@ use rust_try_lib::{
 use std::num::NonZeroU64;
 
 pub struct InitialScene {
+    // gui_renderer: Renderer,
     renderer: Renderer,
     target_window_id: WindowId,
 
@@ -33,12 +34,30 @@ impl InitialScene {
         );
 
         Self {
+            // gui_renderer: Renderer::new(
+            //     &app.graphics(),
+            //     target_window_id,
+            //     BindGroupConfig {
+            //         name: "View Projection",
+            //         entries: vec![BindGroupConfigEntry {
+            //             binding: 0,
+            //             visibility: wgpu::ShaderStages::VERTEX,
+            //             ty: wgpu::BindingType::Buffer {
+            //                 ty: wgpu::BufferBindingType::Uniform,
+            //                 has_dynamic_offset: false,
+            //                 min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(64) }),
+            //             },
+            //             count: None,
+            //         }],
+            //     },
+            // ),
             renderer: Renderer::new(
                 &app.graphics(),
                 target_window_id,
-                BindGroupConfig {
+                &[BindGroupConfig {
                     name: "View Projection",
                     entries: vec![BindGroupConfigEntry {
+                        name: "View Projection Matrix",
                         binding: 0,
                         visibility: wgpu::ShaderStages::VERTEX,
                         ty: wgpu::BindingType::Buffer {
@@ -48,7 +67,7 @@ impl InitialScene {
                         },
                         count: None,
                     }],
-                },
+                }],
             ),
             target_window_id,
 
@@ -113,7 +132,7 @@ impl Scene for InitialScene {
         let _ = self.renderer.render(
             &graphics,
             self.target_window_id,
-            self.camera.view_proj_matrix(),
+            &[&[Some(self.camera.view_proj_matrix())]],
         );
     }
 

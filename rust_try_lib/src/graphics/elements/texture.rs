@@ -1,3 +1,5 @@
+// use crate::graphics::GraphicsCore;
+
 pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
@@ -49,13 +51,38 @@ impl Texture {
     }
 }
 
-pub struct TextureConfig {
-    
-}
-
-pub struct Texture2 {
-    inner: wgpu::Texture,
-    config: TextureConfig,
-}
-
-impl Texture2 {}
+// pub struct TextureConfig {
+//     name: &'static str,
+//     size: wgpu::Extent3d,
+//     mip_level_count: u32,
+//     sample_count: u32,
+//     dimension: wgpu::TextureDimension,
+//     format: wgpu::TextureFormat,
+//     usage: wgpu::TextureUsages,
+// }
+//
+// pub struct Texture2 {
+//     raw: wgpu::Texture,
+//     config: TextureConfig,
+// }
+//
+// impl Texture2 {
+//     pub(super) fn new(graphics_core: GraphicsCore, config: TextureConfig) -> Self {
+//         Self {
+//             raw: graphics_core
+//                 .device
+//                 .create_texture(&wgpu::TextureDescriptor {
+//                     label: Some(config.name),
+//                     size: config.size,
+//                     mip_level_count: config.mip_level_count,
+//                     sample_count: config.sample_count,
+//                     dimension: config.dimension,
+//                     format: config.format,
+//                     usage: config.usage,
+//                 }),
+//             config,
+//         }
+//     }
+// }
+//
+// impl Texture2 {}
