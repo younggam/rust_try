@@ -169,7 +169,7 @@ impl Renderer {
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
-            
+
         let bind_groups = bind_group_configs
             .iter()
             .enumerate()

@@ -36,6 +36,7 @@ pub mod graphics {
         leaf_mod! {pub vertex}
     }
     leaf_mod! {pub graphics}
+    leaf_mod! {pub renderer_on_dev}
     leaf_mod! {pub renderer}
 }
 
